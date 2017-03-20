@@ -22,3 +22,16 @@ footer {
 #preview {
     margin-top: 16px;
 }
+
+ul {
+    padding-left: 0;
+}
+
+li {
+    list-style-type: none;
+    margin-bottom: 8px;
+}
+
+input[type=number] {
+    width: 50px;
+}

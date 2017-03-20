@@ -1,4 +1,6 @@
+from typing import Tuple
 from io import BytesIO
+
 from PIL import Image, ImageDraw
 
 from svg2polylines import Polylines
@@ -10,7 +12,7 @@ HEIGHT = 150
 SCALE = 2
 
 
-def get_png(data: Polylines, scale_factor: float) -> BytesIO:
+def get_png(data: Polylines, scale: float, translate: Tuple[int, int]) -> BytesIO:
     img = Image.new('RGBA', (WIDTH * SCALE, HEIGHT * SCALE), BG_COLOR)
     draw = ImageDraw.Draw(img)
     for polyline in data:
@@ -21,10 +23,10 @@ def get_png(data: Polylines, scale_factor: float) -> BytesIO:
                 print('  (%f,%f) -> (%f, %f)' % (last[0], last[1], x, y))
                 draw.line(
                     (
-                        last[0] * scale_factor,
-                        last[1] * scale_factor,
-                        x * scale_factor,
-                        y * scale_factor,
+                        last[0] * scale + translate[0],
+                        last[1] * scale + translate[1],
+                        x * scale + translate[0],
+                        y * scale + translate[1],
                     ),
                     fill='black',
                     width=SCALE,

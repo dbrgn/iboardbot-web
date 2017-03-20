@@ -22,7 +22,11 @@
             <input type="file" name="file">
 
             <h2>2: Konfigurieren</h2>
-            Skalieren: <input name="scale" type="number" value="100">%
+            <ul>
+                <li>Skalieren: <input name="scale" type="number" value="100">%</li>
+                <li>Verschieben in X: <input name="translate-x" type="number" value="0"></li>
+                <li>Verschieben in Y: <input name="translate-y" type="number" value="0"></li>
+            </ul>
 
             {% if preview %}
             <h2>3: Vorschau</h2>

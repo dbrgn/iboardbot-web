@@ -40,15 +40,31 @@ def hello():
         return redirect('/')
     if svg:
         svg_data = svg.read()
+
         scale_factor = 1
+        translate = [0, 0]
+
         if request.form.get('scale'):
             try:
                 scale_percent = int(request.form.get('scale'))
                 scale_factor = scale_percent / 100
             except ValueError:
                 pass
+
+        if request.form.get('translate-x'):
+            try:
+                translate[0] = int(request.form.get('translate-x'))
+            except ValueError:
+                pass
+
+        if request.form.get('translate-y'):
+            try:
+                translate[1] = int(request.form.get('translate-y'))
+            except ValueError:
+                pass
+
         data = svg2polylines.parse(svg_data)
-        image = draw.get_png(data, scale_factor=scale_factor)
+        image = draw.get_png(data, scale=scale_factor, translate=translate)
         image_url = 'data:image/png;base64,%s' % base64.b64encode(image.getvalue()).decode('ascii')
         return render_template('index.html', preview=image_url)
 
