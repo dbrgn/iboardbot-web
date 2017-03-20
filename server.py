@@ -8,6 +8,10 @@ import draw
 
 
 app = Flask(__name__)
+
+app.static_url_path = '/static'
+app.static_folder = 'static'
+
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 if 'SECRET_KEY' in os.environ:
     app.secret_key = os.environ['SECRET_KEY']
@@ -36,8 +40,15 @@ def hello():
         return redirect('/')
     if svg:
         svg_data = svg.read()
+        scale_factor = 1
+        if request.form.get('scale'):
+            try:
+                scale_percent = int(request.form.get('scale'))
+                scale_factor = scale_percent / 100
+            except ValueError:
+                pass
         data = svg2polylines.parse(svg_data)
-        image = draw.get_png(data)
+        image = draw.get_png(data, scale_factor=scale_factor)
         image_url = 'data:image/png;base64,%s' % base64.b64encode(image.getvalue()).decode('ascii')
         return render_template('index.html', preview=image_url)
 
