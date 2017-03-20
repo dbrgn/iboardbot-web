@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>iBoardBot</title>
+    </head>
+    <body>
+        <h1>iBoardBot</h1>
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+            <ul class=flashes>
+                {% for message in messages %}
+                <li>{{ message }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        {% endwith %}
+        {% if preview %}
+            <img alt="Preview" src="{{ preview }}">
+        {% endif %}
+        <form enctype="multipart/form-data" method="POST" action="/">
+            <input type="file" name="file">
+            <input type="submit" value="Preview">
+        </form>
+        <footer>
+            Software by <a href="https://dbrgn.ch/">Danilo Bargen</a>
+        </footer>
+    </body>
+</html>
