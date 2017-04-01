@@ -1,10 +1,8 @@
 import os
-import base64
 
-from flask import Flask, request, redirect, flash, render_template
+from flask import Flask, request, make_response, render_template, jsonify
 
 import svg2polylines
-import draw
 
 
 app = Flask(__name__)
@@ -24,49 +22,19 @@ def allowed_file(filename):
             filename.rsplit('.', 1)[1].lower() == 'svg'
 
 
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/', methods=['GET'])
 def hello():
-    if request.method != 'POST':
-        return render_template('index.html')
-    if 'file' not in request.files:
-        flash('No file uploaded')
-        return redirect('/')
-    svg = request.files['file']
-    if svg.filename == '':
-        flash('No file uploaded')
-        return redirect('/')
-    if not allowed_file(svg.filename):
-        flash('Only .svg files are allowed')
-        return redirect('/')
-    if svg:
-        svg_data = svg.read()
+    return render_template('index.html')
 
-        scale_factor = 1
-        translate = [0, 0]
 
-        if request.form.get('scale'):
-            try:
-                scale_percent = int(request.form.get('scale'))
-                scale_factor = scale_percent / 100
-            except ValueError:
-                pass
+@app.route('/process', methods=['POST'])
+def process():
+    svg = request.data.strip()
+    if not svg:
+        return make_response('Empty request data', 400)
 
-        if request.form.get('translate-x'):
-            try:
-                translate[0] = int(request.form.get('translate-x'))
-            except ValueError:
-                pass
-
-        if request.form.get('translate-y'):
-            try:
-                translate[1] = int(request.form.get('translate-y'))
-            except ValueError:
-                pass
-
-        data = svg2polylines.parse(svg_data)
-        image = draw.get_png(data, scale=scale_factor, translate=translate)
-        image_url = 'data:image/png;base64,%s' % base64.b64encode(image.getvalue()).decode('ascii')
-        return render_template('index.html', preview=image_url)
+    polylines = svg2polylines.parse(svg)
+    return jsonify(polylines)
 
 
 if __name__ == '__main__':
