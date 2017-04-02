@@ -4,15 +4,15 @@
 extern crate rocket;
 extern crate svg2polylines;
 extern crate serde_json;
-#[macro_use] extern crate rocket_contrib;
+extern crate rocket_contrib;
 #[macro_use] extern crate serde_derive;
 
-use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use rocket::response::NamedFile;
-use rocket_contrib::{JSON, Value};
+use rocket::response::{NamedFile, status};
+use rocket::http::Status;
+use rocket_contrib::JSON;
 use svg2polylines::Polyline;
 
 #[get("/")]
@@ -39,10 +39,17 @@ struct PrintRequest {
     rotate_y: f64,
 }
 
+#[derive(Serialize, Debug)]
+struct ErrorDetails {
+    details: String,
+}
+
 #[post("/preview", format = "application/json", data = "<request>")]
-fn preview(request: JSON<PreviewRequest>) -> JSON<Vec<Polyline>> {
-    let polylines = svg2polylines::parse(&request.into_inner().svg).unwrap();
-    JSON(polylines)
+fn preview(request: JSON<PreviewRequest>) -> Result<JSON<Vec<Polyline>>, status::Custom<JSON<ErrorDetails>>> {
+    match svg2polylines::parse(&request.into_inner().svg) {
+        Ok(polylines) => Ok(JSON(polylines)),
+        Err(errmsg) => Err(status::Custom(Status::BadRequest, JSON(ErrorDetails { details: errmsg }))),
+    }
 }
 
 fn main() {
