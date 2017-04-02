@@ -7,3 +7,9 @@ Instead, it communicates with the iBoardBot through serial, for example from a
 Raspberry Pi.
 
 Work in progress.
+
+## Fabric
+
+Fabric was built with the following options:
+
+    $ node build.js modules=interaction,text,no-svg-export

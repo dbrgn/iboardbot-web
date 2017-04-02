@@ -31,23 +31,32 @@ function loadSvg(ev) {
     }
 }
 
-function scalePolyline(polyline, factor) {
-    return polyline.map((pair) => [pair[0] * factor, pair[1] * factor]);
+/**
+ * Scale and transform polyline so it can be used by fabric.js.
+ */
+function preparePolyline(polyline, scaleFactor) {
+    return polyline.map((pair) => ({
+        x: pair[0] * scaleFactor,
+        y: pair[1] * scaleFactor,
+    }));
 }
 
 function drawPreview(polylines) {
-    const canvas = document.getElementById('preview');
-    const ctx = canvas.getContext('2d');
+    const canvas = new fabric.Canvas('preview');
+    const group = [];
     for (let polyline of polylines) {
-        const scaled = scalePolyline(polyline, 2);
-        ctx.beginPath();
-        ctx.strokeStyle = 'black';
-        ctx.moveTo(scaled[0][0], scaled[0][1]);
-        for (let pos of scaled) {
-            ctx.lineTo(pos[0], pos[1]);
-        }
-        ctx.stroke();
+        const polylineObj = new fabric.Polyline(
+            preparePolyline(polyline, 2),
+            {
+                stroke: 'black',
+                fill: null,
+//                left: 0,
+//                top: 0,
+            }
+        );
+        group.push(polylineObj);
     }
+    canvas.add(new fabric.Group(group));
 }
 
 ready(() => {
