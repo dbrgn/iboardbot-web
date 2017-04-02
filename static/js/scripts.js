@@ -6,9 +6,8 @@ function ready(fn) {
     }
 }
 
-function loadSvg(ev) {
-    const svgText = ev.target.result;
-    if (svgText) {
+function loadSvg(ev, svg, canvas) {
+    if (svg.text) {
         const request = new XMLHttpRequest();
         request.open('POST', '/process', true);
         request.setRequestHeader('Content-Type', 'image/svg+xml');
@@ -16,7 +15,7 @@ function loadSvg(ev) {
             if (this.status == 200) {
                 // Success
                 const polylines = JSON.parse(this.response);
-                drawPreview(polylines);
+                drawPreview(canvas, polylines);
             } else {
                 // Error
                 console.error('Error: HTTP', this.status);
@@ -27,7 +26,7 @@ function loadSvg(ev) {
                 }
             }
         }
-        request.send(svgText);
+        request.send(svg.text);
     }
 }
 
@@ -41,8 +40,7 @@ function preparePolyline(polyline, scaleFactor) {
     }));
 }
 
-function drawPreview(polylines) {
-    const canvas = new fabric.Canvas('preview');
+function drawPreview(canvas, polylines) {
     const group = [];
     for (let polyline of polylines) {
         const polylineObj = new fabric.Polyline(
@@ -50,25 +48,76 @@ function drawPreview(polylines) {
             {
                 stroke: 'black',
                 fill: null,
-//                left: 0,
-//                top: 0,
+                lockUniScaling: true,
+                lockRotation: true,
             }
         );
         group.push(polylineObj);
     }
-    canvas.add(new fabric.Group(group));
+    const groupObj = new fabric.Group(group);
+    canvas.add(groupObj);
+}
+
+function printObject(svg, canvas) {
+    return function(clickEvent) {
+        canvas.forEachObject((obj, i) => {
+            console.debug('Object', i + ':');
+            const dx = obj.left - obj._originalLeft;
+            const dy = obj.top - obj._originalTop;
+            console.debug('Moved by', dx, dy);
+            console.debug('Scaled by', obj.scaleX, obj.scaleY);
+
+            const request = new XMLHttpRequest();
+            request.open('POST', '/print', true);
+            request.setRequestHeader('Content-Type', 'application/json');
+            request.onload = function() {
+                if (this.status == 200) {
+                    // Success
+                    const polylines = JSON.parse(this.response);
+                    drawPreview(canvas, polylines);
+                } else {
+                    // Error
+                    console.error('Error: HTTP', this.status);
+                    if (this.status == 400) {
+                        alert('Error. Did you upload a valid SVG file?');
+                    } else {
+                        alert('Error (HTTP ' + this.status + ')');
+                    }
+                }
+            }
+            request.send(JSON.stringify({
+                'svg': svg.text,
+                'offsetX': dx,
+                'offsetY': dy,
+                'scaleX': obj.scaleX,
+                'scaleY': obj.scaleY,
+            }));
+        });
+    }
 }
 
 ready(() => {
     console.info('Started.');
+
+    // Fabric.js canvas object
+    const canvas = new fabric.Canvas('preview');
+    let svg = {
+        text: '',
+    }
 
     const fileInput = document.querySelector('input[name=file]');
     fileInput.addEventListener('change', (changeEvent) => {
         const file = fileInput.files[0];
         if (file !== undefined) {
             const fr = new FileReader();
-            fr.onload = loadSvg;
+            fr.onload = function(ev) {
+                svg.text = ev.target.result;
+                loadSvg.bind(this)(ev, svg, canvas);
+            }
             fr.readAsText(file);
         }
     });
+
+    const print = document.querySelector('input#print');
+    print.addEventListener('click', printObject(svg, canvas));
 });
