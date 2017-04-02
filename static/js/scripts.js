@@ -9,8 +9,8 @@ function ready(fn) {
 function loadSvg(ev, svg, canvas) {
     if (svg.text) {
         const request = new XMLHttpRequest();
-        request.open('POST', '/process', true);
-        request.setRequestHeader('Content-Type', 'image/svg+xml');
+        request.open('POST', '/preview/', true);
+        request.setRequestHeader('Content-Type', 'application/json');
         request.onload = function() {
             if (this.status == 200) {
                 // Success
@@ -26,7 +26,7 @@ function loadSvg(ev, svg, canvas) {
                 }
             }
         }
-        request.send(svg.text);
+        request.send(JSON.stringify({svg: svg.text}));
     }
 }
 
@@ -35,8 +35,8 @@ function loadSvg(ev, svg, canvas) {
  */
 function preparePolyline(polyline, scaleFactor) {
     return polyline.map((pair) => ({
-        x: pair[0] * scaleFactor,
-        y: pair[1] * scaleFactor,
+        x: pair.x * scaleFactor,
+        y: pair.y * scaleFactor,
     }));
 }
 
@@ -68,13 +68,11 @@ function printObject(svg, canvas) {
             console.debug('Scaled by', obj.scaleX, obj.scaleY);
 
             const request = new XMLHttpRequest();
-            request.open('POST', '/print', true);
+            request.open('POST', '/print/', true);
             request.setRequestHeader('Content-Type', 'application/json');
             request.onload = function() {
                 if (this.status == 200) {
-                    // Success
-                    const polylines = JSON.parse(this.response);
-                    drawPreview(canvas, polylines);
+                    // Success TODO
                 } else {
                     // Error
                     console.error('Error: HTTP', this.status);
