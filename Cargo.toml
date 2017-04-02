@@ -1,0 +1,9 @@
+[package]
+name = "iboardbot-web"
+version = "0.1.0"
+authors = ["Danilo Bargen <mail@dbrgn.ch>"]
+
+[dependencies]
+svg2polylines = "0.1.0"
+rocket = "0.2.4"
+rocket_codegen = "0.2.4"

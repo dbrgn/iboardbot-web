@@ -1,4 +1,2 @@
+target/
 *.swp
-*.pyc
-__pycache__/
-libsvg2polylines.so
