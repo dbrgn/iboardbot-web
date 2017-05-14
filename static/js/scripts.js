@@ -85,10 +85,10 @@ function printObject(svg, canvas) {
             }
             request.send(JSON.stringify({
                 'svg': svg.text,
-                'offsetX': dx,
-                'offsetY': dy,
-                'scaleX': obj.scaleX,
-                'scaleY': obj.scaleY,
+                'offset_x': dx,
+                'offset_y': dy,
+                'scale_x': obj.scaleX,
+                'scale_y': obj.scaleY,
             }));
         });
     }
