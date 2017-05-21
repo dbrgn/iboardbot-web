@@ -2,6 +2,7 @@
 name = "iboardbot-web"
 version = "0.1.0"
 dependencies = [
+ "log 0.3.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "rocket 0.2.6 (git+https://github.com/SergioBenitez/Rocket)",
  "rocket_codegen 0.2.6 (git+https://github.com/SergioBenitez/Rocket)",
  "rocket_contrib 0.2.6 (git+https://github.com/SergioBenitez/Rocket)",

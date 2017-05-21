@@ -1,11 +1,14 @@
 #![feature(plugin)]
 #![plugin(rocket_codegen)]
 
+#[macro_use] extern crate log;
 extern crate rocket;
-extern crate svg2polylines;
-extern crate serde_json;
 extern crate rocket_contrib;
 #[macro_use] extern crate serde_derive;
+extern crate serde_json;
+extern crate svg2polylines;
+
+mod robot;
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -60,6 +63,8 @@ fn print(request: JSON<PrintRequest>) -> Result<(), status::Custom<JSON<ErrorDet
         Err(errmsg) => return Err(status::Custom(Status::BadRequest, JSON(ErrorDetails { details: errmsg }))),
     };
     println!("Print: {:?}", &print_request);
+    println!("Polylines: {:?}", &polylines);
+    robot::print_polylines(&polylines);
     Ok(())
 }
 
