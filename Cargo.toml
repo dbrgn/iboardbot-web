@@ -23,3 +23,7 @@ git = "https://github.com/SergioBenitez/Rocket"
 git = "https://github.com/SergioBenitez/Rocket"
 default-features = false
 features = ["json"]
+
+[dev-dependencies]
+serial = "0.3"
+bufstream = "0.1"

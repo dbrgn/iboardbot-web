@@ -62,8 +62,7 @@ fn print(request: JSON<PrintRequest>) -> Result<(), status::Custom<JSON<ErrorDet
         Ok(polylines) => polylines,
         Err(errmsg) => return Err(status::Custom(Status::BadRequest, JSON(ErrorDetails { details: errmsg }))),
     };
-    println!("Print: {:?}", &print_request);
-    println!("Polylines: {:?}", &polylines);
+    info!("Printing...");
     robot::print_polylines(&polylines);
     Ok(())
 }

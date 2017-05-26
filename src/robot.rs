@@ -2,6 +2,7 @@ use svg2polylines::Polyline;
 
 pub struct Sketch<'a> {
     buf: Vec<u8>,
+    block_size: usize,
     polylines: &'a [Polyline],
 }
 
@@ -53,6 +54,7 @@ impl<'a> Sketch<'a> {
     pub fn new(polylines: &'a [Polyline]) -> Self {
         Sketch {
             buf: vec![],
+            block_size: 768,
             polylines: polylines,
         }
     }
@@ -62,15 +64,13 @@ impl<'a> Sketch<'a> {
         self.buf.extend_from_slice(&command.to_bytes());
     }
 
-    /// Convert the sketch into a byte vector, ready to be sent to the robot
-    /// via serial.
-    pub fn into_bytes(mut self) -> Vec<u8> {
-        self.add_command(Command::BlockStart);
-        self.add_command(Command::BlockNumber(1));
+    /// Convert the sketch into one or more byte vectors (blocks), ready to be
+    /// sent to the robot via serial.
+    pub fn into_blocks(mut self) -> Vec<Vec<u8>> {
+        // First, add all commands to a buffer
         self.add_command(Command::StartDrawing);
         self.add_command(Command::PenLift);
         self.add_command(Command::Move(0, 0));
-
         for polyline in self.polylines {
             if polyline.len() < 2 {
                 warn!("Skipping polyline with less than 2 coordinate pairs");
@@ -84,31 +84,41 @@ impl<'a> Sketch<'a> {
             }
             self.add_command(Command::PenLift);
         }
-
         self.add_command(Command::Move(0, 0));
         self.add_command(Command::StopDrawing);
-        self.buf
+
+        // Then, divide up the buffer into blocks
+        let mut blocks = vec![];
+        for (i, chunk) in self.buf.chunks(self.block_size - 6).enumerate() {
+            let mut block = vec![];
+            block.extend_from_slice(&Command::BlockStart.to_bytes());
+            block.extend_from_slice(&Command::BlockNumber((i+1) as u16).to_bytes());
+            block.extend_from_slice(chunk);
+            blocks.push(block);
+        }
+        blocks
     }
 }
 
 pub fn print_polylines(polylines: &[Polyline]) {
     let sketch = Sketch::new(polylines);
-    let bytes = sketch.into_bytes();
-    println!("Bytes: {:?}", bytes);
+    let blocks = sketch.into_blocks();
+    println!("Blocks: {:?}", blocks);
 }
 
 
 #[cfg(test)]
 mod test {
+    use svg2polylines::{Polyline, CoordinatePair};
     use super::*;
 
     #[test]
     fn test_empty_sketch() {
         let polylines: Vec<Polyline> = vec![];
         let sketch = Sketch::new(&polylines);
-        assert_eq!(sketch.buf.len(), 0);
-        let bytes = sketch.into_bytes();
-        assert_eq!(bytes, vec![
+        let blocks = sketch.into_blocks();
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0], vec![
             0xfa, 0x9f, 0xa1, // Block start
             0xfa, 0x90, 0x01, // Block number 1
             0xfa, 0x1f, 0xa1, // Start drawing
@@ -117,5 +127,62 @@ mod test {
             0x00, 0x00, 0x00, // Move to 0,0
             0xfa, 0x20, 0x00, // Stop drawing
         ]);
+    }
+
+    #[test]
+    fn test_simple_block() {
+        let polylines: Vec<Polyline> = vec![
+            vec![
+                CoordinatePair::from((12.3, 45.6)),
+                CoordinatePair::from((14.3, 47.6)),
+            ]
+        ];
+        let sketch = Sketch::new(&polylines);
+        let blocks = sketch.into_blocks();
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0], vec![
+            0xfa, 0x9f, 0xa1, // Block start
+            0xfa, 0x90, 0x01, // Block number 1
+            0xfa, 0x1f, 0xa1, // Start drawing
+            0xfa, 0x30, 0x00, // Pen lift
+            0x00, 0x00, 0x00, // Move to 0,0
+            0x07, 0xb1, 0xc8, // Move to 123,456
+            0xfa, 0x40, 0x00, // Pen down
+            0x08, 0xf1, 0xdc, // Move to 143,476
+            0xfa, 0x30, 0x00, // Pen lift
+            0x00, 0x00, 0x00, // Move to 0,0
+            0xfa, 0x20, 0x00, // Stop drawing
+        ]);
+    }
+
+    #[test]
+    fn test_full_block() {
+        let mut polyline = vec![CoordinatePair::from((1.0, 1.0))];
+        for _ in 0..123 {
+            polyline.push(CoordinatePair::from((5.0, 10.0)));
+            polyline.push(CoordinatePair::from((2.0, 4.0)));
+        }
+        let polylines = vec![polyline];
+        let sketch = Sketch::new(&polylines);
+        let blocks = sketch.into_blocks();
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].len(), 768);
+    }
+
+    #[test]
+    fn test_two_blocks() {
+        let mut polyline = vec![CoordinatePair::from((1.0, 1.0))];
+        for _ in 0..124 {
+            polyline.push(CoordinatePair::from((5.0, 10.0)));
+            polyline.push(CoordinatePair::from((2.0, 4.0)));
+        }
+        let polylines = vec![polyline];
+        let sketch = Sketch::new(&polylines);
+        let blocks = sketch.into_blocks();
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[0].len(), 768);
+        assert_eq!(blocks[1].len(), 12);
+        assert_eq!(blocks[0][3..6], [0xfa, 0x90, 0x01]); // Block 1
+        assert_eq!(blocks[1][3..6], [0xfa, 0x90, 0x02]); // Block 2
     }
 }
