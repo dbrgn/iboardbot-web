@@ -4,10 +4,12 @@ version = "0.1.0"
 authors = ["Danilo Bargen <mail@dbrgn.ch>"]
 
 [dependencies]
+bufstream = "0.1"
 log = "0.3"
 serde = "1.0"
 serde_json = "1.0"
 serde_derive = "1.0"
+serial = "0.3"
 
 [dependencies.svg2polylines]
 version = "0.2.0"
@@ -23,7 +25,3 @@ git = "https://github.com/SergioBenitez/Rocket"
 git = "https://github.com/SergioBenitez/Rocket"
 default-features = false
 features = ["json"]
-
-[dev-dependencies]
-serial = "0.3"
-bufstream = "0.1"

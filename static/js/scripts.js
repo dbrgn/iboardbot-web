@@ -1,3 +1,6 @@
+/**
+ * Run the specified function as soon as the DOM is ready.
+ */
 function ready(fn) {
     if (document.readyState != 'loading'){
         fn();
@@ -6,6 +9,9 @@ function ready(fn) {
     }
 }
 
+/**
+ * Load an SVG file.
+ */
 function loadSvg(ev, svg, canvas) {
     if (svg.text) {
         const request = new XMLHttpRequest();
@@ -58,14 +64,17 @@ function drawPreview(canvas, polylines) {
     canvas.add(groupObj);
 }
 
+/**
+ * Send the object to the printer.
+ */
 function printObject(svg, canvas) {
     return function(clickEvent) {
         canvas.forEachObject((obj, i) => {
             console.debug('Object', i + ':');
             const dx = obj.left - obj._originalLeft;
             const dy = obj.top - obj._originalTop;
-            console.debug('Moved by', dx, dy);
-            console.debug('Scaled by', obj.scaleX, obj.scaleY);
+            console.debug('  Moved by', dx, dy);
+            console.debug('  Scaled by', obj.scaleX, obj.scaleY);
 
             const request = new XMLHttpRequest();
             request.open('POST', '/print/', true);
@@ -73,6 +82,7 @@ function printObject(svg, canvas) {
             request.onload = function() {
                 if (this.status == 200) {
                     // Success TODO
+                    alert('Printing!');
                 } else {
                     // Error
                     console.error('Error: HTTP', this.status);

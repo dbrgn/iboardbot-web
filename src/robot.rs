@@ -1,4 +1,18 @@
+use std::collections::VecDeque;
+use std::io::{self, BufRead, Write};
+use std::sync::mpsc::{channel, Sender, RecvTimeoutError};
+use std::thread;
+use std::time::Duration;
+
+use bufstream::BufStream;
+use serial::{self, BaudRate, PortSettings, SerialPort};
 use svg2polylines::Polyline;
+
+const IBB_WIDTH: f64 = 716.0;
+const IBB_HEIGHT: f64 = 246.0;
+const TIMEOUT_MS: u64 = 2000;
+
+type Block = Vec<u8>;
 
 pub struct Sketch<'a> {
     buf: Vec<u8>,
@@ -66,7 +80,7 @@ impl<'a> Sketch<'a> {
 
     /// Convert the sketch into one or more byte vectors (blocks), ready to be
     /// sent to the robot via serial.
-    pub fn into_blocks(mut self) -> Vec<Vec<u8>> {
+    pub fn into_blocks(mut self) -> Vec<Block> {
         // First, add all commands to a buffer
         self.add_command(Command::StartDrawing);
         self.add_command(Command::PenLift);
@@ -100,10 +114,76 @@ impl<'a> Sketch<'a> {
     }
 }
 
-pub fn print_polylines(polylines: &[Polyline]) {
-    let sketch = Sketch::new(polylines);
-    let blocks = sketch.into_blocks();
-    println!("Blocks: {:?}", blocks);
+/// Configure the serial port
+fn setup_serial<P: SerialPort>(port: &mut P, baud_rate: BaudRate) -> io::Result<()> {
+    port.configure(&PortSettings {
+        baud_rate: baud_rate,
+        char_size: serial::Bits8,
+        parity: serial::ParityNone,
+        stop_bits: serial::Stop1,
+        flow_control: serial::FlowNone,
+    })?;
+    port.set_timeout(Duration::from_millis(TIMEOUT_MS))?;
+    Ok(())
+}
+
+/// Spawn a thread that communicates with the robot over serial.
+///
+/// The return value is the sending end of a channel. Over this channel, a list
+/// of polylines can be sent.
+pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<Vec<Polyline>> {
+    // Connect to serial device
+    println!("Connecting to {} with baud rate {}...", device, baud_rate.speed());
+    let mut port = serial::open(device)
+        .expect(&format!("Could not open serial device {}", device));
+    setup_serial(&mut port, baud_rate)
+        .expect("Could not configure serial port");
+
+    // Wrap port into a buffered stream
+    let mut ser = BufStream::new(port);
+    let mut buf = String::new();
+
+    // Main loop
+    let (tx, rx) = channel();
+    thread::spawn(move || {
+        let mut blocks: VecDeque<Block> = VecDeque::new();
+        loop {
+            // Receive command
+            let command: Result<Vec<Polyline>, RecvTimeoutError> =
+                rx.recv_timeout(Duration::from_millis(TIMEOUT_MS));
+            match command {
+                Err(RecvTimeoutError::Timeout) => {},
+                Err(RecvTimeoutError::Disconnected) => {
+                    println!("Disconnected from robot");
+                    break;
+                },
+                Ok(polylines) => {
+                    println!("Received command");
+                    let sketch = Sketch::new(&polylines);
+                    for block in sketch.into_blocks() {
+                        blocks.push_back(block);
+                    }
+                    println!("{} block(s) in queue", blocks.len());
+                },
+            };
+
+            // Talk to robot over serial
+            if let Ok(_) = ser.read_line(&mut buf) {
+                let line = buf.trim();
+                println!("< {}", line);
+                if blocks.len() > 0 && (line == "CL STATUS=READY" || line == "CL STATUS=ACK&NUM=1") {
+                    println!("> GOGO Draw");
+                    let block = blocks.pop_front().expect("Could not pop block from non-empty queue");
+                    ser.write_all(&block)
+                        .unwrap_or_else(|e| error!("Could not write data to serial: {}", e));
+                    ser.flush()
+                        .unwrap_or_else(|e| error!("Could not flush serial buffer: {}", e));
+                }
+            }
+            buf.clear();
+        }
+    });
+    tx
 }
 
 
