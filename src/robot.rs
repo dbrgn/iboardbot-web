@@ -8,8 +8,8 @@ use bufstream::BufStream;
 use serial::{self, BaudRate, PortSettings, SerialPort};
 use svg2polylines::Polyline;
 
-const IBB_WIDTH: f64 = 716.0;
-const IBB_HEIGHT: f64 = 246.0;
+const IBB_WIDTH: f64 = 358.0;
+const IBB_HEIGHT: f64 = 123.0;
 const TIMEOUT_MS: u64 = 2000;
 
 type Block = Vec<u8>;
@@ -64,6 +64,10 @@ impl Command {
     }
 }
 
+fn invert(y: f64) -> f64 {
+    IBB_HEIGHT - y
+}
+
 impl<'a> Sketch<'a> {
     pub fn new(polylines: &'a [Polyline]) -> Self {
         Sketch {
@@ -90,11 +94,12 @@ impl<'a> Sketch<'a> {
                 warn!("Skipping polyline with less than 2 coordinate pairs");
                 continue;
             }
+
             let start = polyline[0];
-            self.add_command(Command::Move((start.x * 10.0) as u16, (start.y * 10.0) as u16));
+            self.add_command(Command::Move((start.x * 10.0) as u16, (invert(start.y) * 10.0) as u16));
             self.add_command(Command::PenDown);
             for point in polyline[1..].iter() {
-                self.add_command(Command::Move((point.x * 10.0) as u16, (point.y * 10.0) as u16));
+                self.add_command(Command::Move((point.x * 10.0) as u16, (invert(point.y) * 10.0) as u16));
             }
             self.add_command(Command::PenLift);
         }
@@ -146,24 +151,30 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<Vec<Polyline>> {
     // Main loop
     let (tx, rx) = channel();
     thread::spawn(move || {
-        let mut blocks: VecDeque<Block> = VecDeque::new();
+        let mut blocks_queue: VecDeque<Block> = VecDeque::new();
         loop {
-            // Receive command
-            let command: Result<Vec<Polyline>, RecvTimeoutError> =
+            // Receive printing task
+            let task: Result<Vec<Polyline>, RecvTimeoutError> =
                 rx.recv_timeout(Duration::from_millis(TIMEOUT_MS));
-            match command {
+            match task {
                 Err(RecvTimeoutError::Timeout) => {},
                 Err(RecvTimeoutError::Disconnected) => {
                     println!("Disconnected from robot");
                     break;
                 },
                 Ok(polylines) => {
-                    println!("Received command");
+                    println!("Received task");
                     let sketch = Sketch::new(&polylines);
                     for block in sketch.into_blocks() {
-                        blocks.push_back(block);
+                        println!("Block: {:?}", block);
+                        for command in block.chunks(3) {
+                            println!("  Command: {} {}",
+                                     (command[0] as u16) << 4 | (command[1] as u16) >> 4,
+                                     ((command[1] as u16) & 0b1111) << 8 | command[2] as u16);
+                        }
+                        blocks_queue.push_back(block);
                     }
-                    println!("{} block(s) in queue", blocks.len());
+                    println!("{} block(s) in queue", blocks_queue.len());
                 },
             };
 
@@ -171,9 +182,9 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<Vec<Polyline>> {
             if let Ok(_) = ser.read_line(&mut buf) {
                 let line = buf.trim();
                 println!("< {}", line);
-                if blocks.len() > 0 && (line == "CL STATUS=READY" || line == "CL STATUS=ACK&NUM=1") {
+                if blocks_queue.len() > 0 && (line == "CL STATUS=READY" || line == "CL STATUS=ACK&NUM=1") {
                     println!("> GOGO Draw");
-                    let block = blocks.pop_front().expect("Could not pop block from non-empty queue");
+                    let block = blocks_queue.pop_front().expect("Could not pop block from non-empty queue");
                     ser.write_all(&block)
                         .unwrap_or_else(|e| error!("Could not write data to serial: {}", e));
                     ser.flush()
@@ -265,4 +276,5 @@ mod test {
         assert_eq!(blocks[0][3..6], [0xfa, 0x90, 0x01]); // Block 1
         assert_eq!(blocks[1][3..6], [0xfa, 0x90, 0x02]); // Block 2
     }
+
 }

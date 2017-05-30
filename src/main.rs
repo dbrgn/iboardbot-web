@@ -63,15 +63,31 @@ fn preview(request: JSON<PreviewRequest>) -> Result<JSON<Vec<Polyline>>, status:
     }
 }
 
+/// Scale polylines.
+fn scale_polylines(polylines: &mut Vec<Polyline>, offset: (f64, f64), scale: (f64, f64)) {
+    println!("Scaling polylines with offset {:?} and scale {:?}", offset, scale);
+    for polyline in polylines {
+        for coord in polyline {
+            coord.x = scale.0 * coord.x + offset.0;
+            coord.y = scale.1 * coord.y + offset.1;
+        }
+    }
+}
+
 #[post("/print", format = "application/json", data = "<request>")]
 fn print(request: JSON<PrintRequest>, robot_queue: State<RobotQueue>)
         -> Result<(), status::Custom<JSON<ErrorDetails>>> {
     // Parse SVG into list of polylines
     let print_request = request.into_inner();
-    let polylines = match svg2polylines::parse(&print_request.svg) {
+    let mut polylines = match svg2polylines::parse(&print_request.svg) {
         Ok(polylines) => polylines,
         Err(e) => return Err(status::Custom(Status::BadRequest, JSON(ErrorDetails { details: e }))),
     };
+
+    // Scale polylines
+    scale_polylines(&mut polylines,
+                    (print_request.offset_x, print_request.offset_y),
+                    (print_request.scale_x, print_request.scale_y));
 
     // Get access to queue
     let tx = match robot_queue.inner().lock() {
