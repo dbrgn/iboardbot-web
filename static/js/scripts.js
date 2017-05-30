@@ -1,3 +1,7 @@
+const IBB_WIDTH = 358;
+const IBB_HEIGHT = 123;
+const PREVIEW_SCALE_FACTOR = 2; // Preview is scaled with a factor of 2
+
 /**
  * Run the specified function as soon as the DOM is ready.
  */
@@ -71,8 +75,8 @@ function printObject(svg, canvas) {
     return function(clickEvent) {
         canvas.forEachObject((obj, i) => {
             console.debug('Object', i + ':');
-            const dx = obj.left - obj._originalLeft;
-            const dy = obj.top - obj._originalTop;
+            const dx = (obj.left - obj._originalLeft) / PREVIEW_SCALE_FACTOR;
+            const dy = (obj.top - obj._originalTop) / PREVIEW_SCALE_FACTOR;
             console.debug('  Moved by', dx, dy);
             console.debug('  Scaled by', obj.scaleX, obj.scaleY);
 
