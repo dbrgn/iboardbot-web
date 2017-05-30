@@ -10,7 +10,8 @@ use svg2polylines::Polyline;
 
 const IBB_WIDTH: f64 = 358.0;
 const IBB_HEIGHT: f64 = 123.0;
-const TIMEOUT_MS: u64 = 2000;
+const TIMEOUT_MS_SERIAL: u64 = 1000;
+const TIMEOUT_MS_CHANNEL: u64 = 100;
 
 type Block = Vec<u8>;
 
@@ -128,7 +129,7 @@ fn setup_serial<P: SerialPort>(port: &mut P, baud_rate: BaudRate) -> io::Result<
         stop_bits: serial::Stop1,
         flow_control: serial::FlowNone,
     })?;
-    port.set_timeout(Duration::from_millis(TIMEOUT_MS))?;
+    port.set_timeout(Duration::from_millis(TIMEOUT_MS_SERIAL))?;
     Ok(())
 }
 
@@ -155,7 +156,7 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<Vec<Polyline>> {
         loop {
             // Receive printing task
             let task: Result<Vec<Polyline>, RecvTimeoutError> =
-                rx.recv_timeout(Duration::from_millis(TIMEOUT_MS));
+                rx.recv_timeout(Duration::from_millis(TIMEOUT_MS_CHANNEL));
             match task {
                 Err(RecvTimeoutError::Timeout) => {},
                 Err(RecvTimeoutError::Disconnected) => {
