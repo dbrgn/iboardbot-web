@@ -12,7 +12,7 @@ use svg2polylines::Polyline;
 const IBB_WIDTH: f64 = 358.0;
 const IBB_HEIGHT: f64 = 123.0;
 const TIMEOUT_MS_SERIAL: u64 = 1000;
-const TIMEOUT_MS_CHANNEL: u64 = 100;
+const TIMEOUT_MS_CHANNEL: u64 = 50;
 
 type Block = Vec<u8>;
 
