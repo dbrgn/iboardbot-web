@@ -66,8 +66,30 @@ impl Command {
     }
 }
 
-fn invert(y: f64) -> f64 {
-    IBB_HEIGHT - y
+/// Clamp x coordinate.
+fn fix_x(x: f64) -> f64 {
+    if x < 0.0 {
+        0.0
+    } else if x > IBB_WIDTH {
+        IBB_WIDTH
+    } else {
+        x
+    }
+}
+
+/// Invert and clamp y coordinate.
+fn fix_y(y: f64) -> f64 {
+    // Invert y coordinate, since SVG uses the top left as 0 coordinate,
+    // while the IBB uses the bottom left as 0 coordinate.
+    let yy = IBB_HEIGHT - y;
+
+    if yy < 0.0 {
+        0.0
+    } else if yy > IBB_HEIGHT {
+        IBB_HEIGHT
+    } else {
+        yy
+    }
 }
 
 impl<'a> Sketch<'a> {
@@ -98,10 +120,10 @@ impl<'a> Sketch<'a> {
             }
 
             let start = polyline[0];
-            self.add_command(Command::Move((start.x * 10.0) as u16, (invert(start.y) * 10.0) as u16));
+            self.add_command(Command::Move((fix_x(start.x) * 10.0) as u16, (fix_y(start.y) * 10.0) as u16));
             self.add_command(Command::PenDown);
             for point in polyline[1..].iter() {
-                self.add_command(Command::Move((point.x * 10.0) as u16, (invert(point.y) * 10.0) as u16));
+                self.add_command(Command::Move((fix_x(point.x) * 10.0) as u16, (fix_y(point.y) * 10.0) as u16));
             }
             self.add_command(Command::PenLift);
         }
