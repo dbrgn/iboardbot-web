@@ -5,6 +5,7 @@ use std::thread;
 use std::time::Duration;
 
 use bufstream::BufStream;
+use regex::Regex;
 use serial::{self, BaudRate, PortSettings, SerialPort};
 use svg2polylines::Polyline;
 
@@ -149,33 +150,38 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<Vec<Polyline>> {
     let mut ser = BufStream::new(port);
     let mut buf = String::new();
 
+    // Regex for recognizing ACK messages
+    let ack_re = Regex::new(r"^CL STATUS=ACK&NUM=(\d+)$").expect("Could not compile regex");
+
     // Main loop
     let (tx, rx) = channel();
     thread::spawn(move || {
+        // A queue for blocks that should be printed.
         let mut blocks_queue: VecDeque<Block> = VecDeque::new();
+
+        // The current block number.
+        let mut current_block: u32 = 0;
+
         loop {
-            // Receive printing task
+            // Check for a new printing task
             let task: Result<Vec<Polyline>, RecvTimeoutError> =
                 rx.recv_timeout(Duration::from_millis(TIMEOUT_MS_CHANNEL));
             match task {
-                Err(RecvTimeoutError::Timeout) => {},
-                Err(RecvTimeoutError::Disconnected) => {
-                    println!("Disconnected from robot");
-                    break;
-                },
                 Ok(polylines) => {
                     println!("Received task");
                     let sketch = Sketch::new(&polylines);
                     for block in sketch.into_blocks() {
-                        println!("Block: {:?}", block);
-                        for command in block.chunks(3) {
-                            println!("  Command: {} {}",
-                                     (command[0] as u16) << 4 | (command[1] as u16) >> 4,
-                                     ((command[1] as u16) & 0b1111) << 8 | command[2] as u16);
-                        }
                         blocks_queue.push_back(block);
                     }
                     println!("{} block(s) in queue", blocks_queue.len());
+                },
+                Err(RecvTimeoutError::Timeout) => {
+                    // We didn't get a new task.
+                    // Simply ignore it :)
+                },
+                Err(RecvTimeoutError::Disconnected) => {
+                    println!("Disconnected from robot");
+                    break;
                 },
             };
 
@@ -183,13 +189,40 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<Vec<Polyline>> {
             if let Ok(_) = ser.read_line(&mut buf) {
                 let line = buf.trim();
                 println!("< {}", line);
-                if blocks_queue.len() > 0 && (line == "CL STATUS=READY" || line == "CL STATUS=ACK&NUM=1") {
-                    println!("> GOGO Draw");
-                    let block = blocks_queue.pop_front().expect("Could not pop block from non-empty queue");
-                    ser.write_all(&block)
-                        .unwrap_or_else(|e| error!("Could not write data to serial: {}", e));
-                    ser.flush()
-                        .unwrap_or_else(|e| error!("Could not flush serial buffer: {}", e));
+                if blocks_queue.len() > 0 {
+
+                    // TODO: It's possible that the block counter starts at
+                    // non-0. In that case, we should update the current_block
+                    // variable as soon as the blocks queue changes from 0 to >0.
+
+                    let mut send_next = false;
+
+                    if line == "CL STATUS=READY" {
+                        send_next = true;
+                    } else if let Some(captures) = ack_re.captures(line) {
+                        let number_str = captures.get(1).unwrap().as_str();
+                        match number_str.parse::<u32>() {
+                            Ok(number) if number == current_block => {
+                                send_next = true;
+                            },
+                            Ok(number) => {
+                                println!("Warning: Got ack for non-current block");
+                            },
+                            Err(_) => {
+                                println!("Could not parse ACK number \"{}\"", number_str);
+                            },
+                        }
+                    }
+
+                    if send_next {
+                        println!("> Print a block");
+                        let block = blocks_queue.pop_front().expect("Could not pop block from non-empty queue");
+                        current_block += 1;
+                        ser.write_all(&block)
+                            .unwrap_or_else(|e| error!("Could not write data to serial: {}", e));
+                        ser.flush()
+                            .unwrap_or_else(|e| error!("Could not flush serial buffer: {}", e));
+                    }
                 }
             }
             buf.clear();

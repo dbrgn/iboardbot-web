@@ -2,7 +2,9 @@
 #![plugin(rocket_codegen)]
 
 extern crate bufstream;
+extern crate docopt;
 #[macro_use] extern crate log;
+extern crate regex;
 extern crate rocket;
 extern crate rocket_contrib;
 #[macro_use] extern crate serde_derive;
@@ -17,6 +19,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::Sender;
 
+use docopt::Docopt;
 use rocket::response::{NamedFile, status};
 use rocket::http::Status;
 use rocket::State;
@@ -25,6 +28,25 @@ use serial::BaudRate;
 use svg2polylines::Polyline;
 
 type RobotQueue = Arc<Mutex<Sender<Vec<Polyline>>>>;
+
+const USAGE: &'static str = "
+iBoardBot Web: Cloudless drawing fun.
+
+Usage:
+    iboardbot-web <device>
+
+Example:
+
+    iboardbot-web /dev/ttyACM0
+
+Options:
+    -h --help  Show this screen.
+";
+
+#[derive(Debug, Deserialize)]
+struct Args {
+    arg_device: String,
+}
 
 #[get("/")]
 fn index() -> io::Result<NamedFile> {
@@ -117,10 +139,14 @@ fn print(request: JSON<PrintRequest>, robot_queue: State<RobotQueue>)
 }
 
 fn main() {
+    // Parse args
+    let args: Args = Docopt::new(USAGE)
+                            .and_then(|d| d.deserialize())
+                            .unwrap_or_else(|e| e.exit());
+
     // Launch robot thread
-    let device = "/dev/ttyACM1";
     let baud_rate = BaudRate::Baud115200;
-    let tx = robot::communicate(&device, baud_rate);
+    let tx = robot::communicate(&args.arg_device, baud_rate);
 
     // Initialize server state
     let robot_queue = Arc::new(Mutex::new(tx));
