@@ -188,8 +188,13 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<Vec<Polyline>> {
             // Talk to robot over serial
             if let Ok(_) = ser.read_line(&mut buf) {
                 let line = buf.trim();
+
+                // Debug print of all serial input
                 println!("< {}", line);
-                if blocks_queue.len() > 0 {
+
+                // If there are blocks to be sent and we got a new CL command
+                // from the robot...
+                if blocks_queue.len() > 0 && line.starts_with("CL ") {
 
                     // TODO: It's possible that the block counter starts at
                     // non-0. In that case, we should update the current_block
