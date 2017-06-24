@@ -195,11 +195,6 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<Vec<Polyline>> {
                 // If there are blocks to be sent and we got a new CL command
                 // from the robot...
                 if blocks_queue.len() > 0 && line.starts_with("CL ") {
-
-                    // TODO: It's possible that the block counter starts at
-                    // non-0. In that case, we should update the current_block
-                    // variable as soon as the blocks queue changes from 0 to >0.
-
                     let mut send_next = false;
 
                     if line == "CL STATUS=READY" {
@@ -207,7 +202,22 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<Vec<Polyline>> {
                     } else if let Some(captures) = ack_re.captures(line) {
                         let number_str = captures.get(1).unwrap().as_str();
                         match number_str.parse::<u32>() {
+                            Ok(number) if number == 1 => {
+                                // If the acked number went down, that means that a reset
+                                // happened in between. Simply continue printing.
+                                send_next = true;
+                            },
                             Ok(number) if number == current_block => {
+                                // Acked number is our current block, so we can safely
+                                // send the next one.
+                                send_next = true;
+                            },
+                            Ok(number) if number > current_block => {
+                                // Acked number is larger than our current block. That means
+                                // that we probably started the server process after a few
+                                // blocks were already printed. Reset the number.
+                                println!("Reset current block number");
+                                current_block = 1;
                                 send_next = true;
                             },
                             Ok(number) => {
