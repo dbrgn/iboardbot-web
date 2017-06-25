@@ -243,7 +243,7 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<Vec<Polyline>> {
                                 send_next = true;
                             },
                             Ok(number) => {
-                                println!("Warning: Got ack for non-current block");
+                                println!("Warning: Got ack for non-current block ({} != {})", number, current_block);
                             },
                             Err(_) => {
                                 println!("Could not parse ACK number \"{}\"", number_str);
