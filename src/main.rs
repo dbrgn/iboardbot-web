@@ -1,4 +1,5 @@
 #![feature(plugin)]
+#![feature(decl_macro)]
 #![plugin(rocket_codegen)]
 
 extern crate bufstream;
@@ -23,7 +24,7 @@ use docopt::Docopt;
 use rocket::response::{NamedFile, status};
 use rocket::http::Status;
 use rocket::State;
-use rocket_contrib::JSON;
+use rocket_contrib::Json;
 use serial::BaudRate;
 use svg2polylines::Polyline;
 
@@ -78,10 +79,10 @@ struct ErrorDetails {
 }
 
 #[post("/preview", format = "application/json", data = "<request>")]
-fn preview(request: JSON<PreviewRequest>) -> Result<JSON<Vec<Polyline>>, status::Custom<JSON<ErrorDetails>>> {
+fn preview(request: Json<PreviewRequest>) -> Result<Json<Vec<Polyline>>, status::Custom<Json<ErrorDetails>>> {
     match svg2polylines::parse(&request.into_inner().svg) {
-        Ok(polylines) => Ok(JSON(polylines)),
-        Err(errmsg) => Err(status::Custom(Status::BadRequest, JSON(ErrorDetails { details: errmsg }))),
+        Ok(polylines) => Ok(Json(polylines)),
+        Err(errmsg) => Err(status::Custom(Status::BadRequest, Json(ErrorDetails { details: errmsg }))),
     }
 }
 
@@ -97,13 +98,13 @@ fn scale_polylines(polylines: &mut Vec<Polyline>, offset: (f64, f64), scale: (f6
 }
 
 #[post("/print", format = "application/json", data = "<request>")]
-fn print(request: JSON<PrintRequest>, robot_queue: State<RobotQueue>)
-        -> Result<(), status::Custom<JSON<ErrorDetails>>> {
+fn print(request: Json<PrintRequest>, robot_queue: State<RobotQueue>)
+        -> Result<(), status::Custom<Json<ErrorDetails>>> {
     // Parse SVG into list of polylines
     let print_request = request.into_inner();
     let mut polylines = match svg2polylines::parse(&print_request.svg) {
         Ok(polylines) => polylines,
-        Err(e) => return Err(status::Custom(Status::BadRequest, JSON(ErrorDetails { details: e }))),
+        Err(e) => return Err(status::Custom(Status::BadRequest, Json(ErrorDetails { details: e }))),
     };
 
     // Scale polylines
@@ -116,7 +117,7 @@ fn print(request: JSON<PrintRequest>, robot_queue: State<RobotQueue>)
         Err(e) => return Err(
             status::Custom(
                 Status::BadRequest,
-                JSON(ErrorDetails {
+                Json(ErrorDetails {
                     details: format!("Could not communicate with robot thread: {}", e),
                 })
             )
@@ -127,7 +128,7 @@ fn print(request: JSON<PrintRequest>, robot_queue: State<RobotQueue>)
         return Err(
             status::Custom(
                 Status::InternalServerError,
-                JSON(ErrorDetails {
+                Json(ErrorDetails {
                     details: format!("Could not send print request to robot thread: {}", e),
                 })
             )
