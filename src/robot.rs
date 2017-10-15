@@ -1,11 +1,13 @@
 use std::collections::VecDeque;
 use std::io::{self, BufRead, Write};
+use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{channel, Sender, RecvTimeoutError};
 use std::thread;
 use std::time::Duration;
 
 use bufstream::BufStream;
 use regex::Regex;
+use scheduled_executor::CoreExecutor;
 use serial::{self, BaudRate, PortSettings, SerialPort};
 use svg2polylines::Polyline;
 
@@ -25,10 +27,7 @@ pub struct Sketch<'a> {
 #[derive(Debug)]
 pub enum PrintTask {
     Once(Vec<Polyline>),
-    Every5Min(Vec<Polyline>),
-    Every15Min(Vec<Polyline>),
-    Every30Min(Vec<Polyline>),
-    Every60Min(Vec<Polyline>),
+    Scheduled(Duration, Vec<Polyline>),
 }
 
 enum Command {
@@ -245,10 +244,13 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<PrintTask> {
     let (tx, rx) = channel();
     thread::spawn(move || {
         // A queue for blocks that should be printed.
-        let mut blocks_queue: VecDeque<Block> = VecDeque::new();
+        let blocks_queue: Arc<Mutex<VecDeque<Block>>> = Arc::new(Mutex::new(VecDeque::new()));
 
         // The current block number.
         let mut current_block: u32 = 0;
+
+        // Initialize the job scheduler
+        let executor = CoreExecutor::with_name("iboardbot_scheduler").unwrap();
 
         loop {
             // Check for a new printing task
@@ -261,15 +263,41 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<PrintTask> {
                         PrintTask::Once(polylines) => {
                             println!("Scheduling once");
                             let sketch = Sketch::new(&polylines);
-                            for block in sketch.into_blocks(true) {
-                                blocks_queue.push_back(block);
+                            match blocks_queue.lock() {
+                                Ok(mut queue) => {
+                                    for block in sketch.into_blocks(true) {
+                                        queue.push_back(block);
+                                    }
+                                },
+                                Err(e) => error!("Could not unlock blocks queue mutex: {}", e),
                             }
                         },
-                        t @ _ => {
-                            println!("Ignoring task: {:?}", t);
-                        }
+                        PrintTask::Scheduled(interval, polylines) => {
+                            println!("Scheduling every {} minutes", interval.as_secs() / 60);
+                            let blocks_queue = blocks_queue.clone();
+                            executor.schedule_fixed_rate(
+                                Duration::from_secs(2), // Wait 2 seconds before scheduling the first task
+                                interval, // After that, schedule in a fixed interval
+                                move |_handle| {
+                                    println!("Starting scheduled print");
+                                    let sketch = Sketch::new(&polylines);
+                                    match blocks_queue.lock() {
+                                        Ok(mut queue) => {
+                                            for block in sketch.into_blocks(true) {
+                                                queue.push_back(block);
+                                            }
+                                        },
+                                        Err(e) => error!("Could not unlock blocks queue mutex: {}", e),
+                                    }
+                                }
+                            );
+                        },
                     }
-                    println!("{} block(s) in queue", blocks_queue.len());
+                    if let Ok(queue) = blocks_queue.lock() {
+                        println!("{} block(s) in queue", queue.len());
+                    } else {
+                        warn!("Could not unlock blocks queue mutex");
+                    }
                 },
                 Err(RecvTimeoutError::Timeout) => {
                     // We didn't get a new task.
@@ -290,50 +318,55 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<PrintTask> {
 
                 // If there are blocks to be sent and we got a new CL command
                 // from the robot...
-                if blocks_queue.len() > 0 && line.starts_with("CL ") {
-                    let mut send_next = false;
+                match blocks_queue.lock() {
+                    Ok(mut queue) => {
+                        if queue.len() > 0 && line.starts_with("CL ") {
+                            let mut send_next = false;
 
-                    if line == "CL STATUS=READY" {
-                        send_next = true;
-                    } else if let Some(captures) = ack_re.captures(line) {
-                        let number_str = captures.get(1).unwrap().as_str();
-                        match number_str.parse::<u32>() {
-                            Ok(number) if number == 1 => {
-                                // If the acked number went down, that means that a reset
-                                // happened in between. Simply continue printing.
+                            if line == "CL STATUS=READY" {
                                 send_next = true;
-                            },
-                            Ok(number) if number == current_block => {
-                                // Acked number is our current block, so we can safely
-                                // send the next one.
-                                send_next = true;
-                            },
-                            Ok(number) if number > current_block => {
-                                // Acked number is larger than our current block. That means
-                                // that we probably started the server process after a few
-                                // blocks were already printed. Reset the number.
-                                println!("Reset current block number");
-                                current_block = 1;
-                                send_next = true;
-                            },
-                            Ok(number) => {
-                                println!("Warning: Got ack for non-current block ({} != {})", number, current_block);
-                            },
-                            Err(_) => {
-                                println!("Could not parse ACK number \"{}\"", number_str);
-                            },
+                            } else if let Some(captures) = ack_re.captures(line) {
+                                let number_str = captures.get(1).unwrap().as_str();
+                                match number_str.parse::<u32>() {
+                                    Ok(number) if number == 1 => {
+                                        // If the acked number went down, that means that a reset
+                                        // happened in between. Simply continue printing.
+                                        send_next = true;
+                                    },
+                                    Ok(number) if number == current_block => {
+                                        // Acked number is our current block, so we can safely
+                                        // send the next one.
+                                        send_next = true;
+                                    },
+                                    Ok(number) if number > current_block => {
+                                        // Acked number is larger than our current block. That means
+                                        // that we probably started the server process after a few
+                                        // blocks were already printed. Reset the number.
+                                        println!("Reset current block number");
+                                        current_block = 1;
+                                        send_next = true;
+                                    },
+                                    Ok(number) => {
+                                        println!("Warning: Got ack for non-current block ({} != {})", number, current_block);
+                                    },
+                                    Err(_) => {
+                                        println!("Could not parse ACK number \"{}\"", number_str);
+                                    },
+                                }
+                            }
+
+                            if send_next {
+                                println!("> Print a block");
+                                let block = queue.pop_front().expect("Could not pop block from non-empty queue");
+                                current_block += 1;
+                                ser.write_all(&block)
+                                    .unwrap_or_else(|e| error!("Could not write data to serial: {}", e));
+                                ser.flush()
+                                    .unwrap_or_else(|e| error!("Could not flush serial buffer: {}", e));
+                            }
                         }
-                    }
-
-                    if send_next {
-                        println!("> Print a block");
-                        let block = blocks_queue.pop_front().expect("Could not pop block from non-empty queue");
-                        current_block += 1;
-                        ser.write_all(&block)
-                            .unwrap_or_else(|e| error!("Could not write data to serial: {}", e));
-                        ser.flush()
-                            .unwrap_or_else(|e| error!("Could not flush serial buffer: {}", e));
-                    }
+                    },
+                    Err(e) => error!("Could not unlock blocks queue mutex: {}", e),
                 }
             }
             buf.clear();

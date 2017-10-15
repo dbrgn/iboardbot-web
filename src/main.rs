@@ -4,7 +4,7 @@
 
 extern crate bufstream;
 extern crate docopt;
-extern crate job_scheduler;
+extern crate scheduled_executor;
 #[macro_use] extern crate log;
 extern crate regex;
 extern crate rocket;
@@ -20,6 +20,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::Sender;
+use std::time::Duration;
 
 use docopt::Docopt;
 use rocket::response::{NamedFile, status};
@@ -81,10 +82,10 @@ impl PrintMode {
     fn to_print_task(&self, polylines: Vec<Polyline>) -> PrintTask {
         match *self {
             PrintMode::Once => PrintTask::Once(polylines),
-            PrintMode::Schedule5 => PrintTask::Every5Min(polylines),
-            PrintMode::Schedule15 => PrintTask::Every15Min(polylines),
-            PrintMode::Schedule30 => PrintTask::Every30Min(polylines),
-            PrintMode::Schedule60 => PrintTask::Every60Min(polylines),
+            PrintMode::Schedule5 => PrintTask::Scheduled(Duration::from_secs(5 * 60), polylines),
+            PrintMode::Schedule15 => PrintTask::Scheduled(Duration::from_secs(15 * 60), polylines),
+            PrintMode::Schedule30 => PrintTask::Scheduled(Duration::from_secs(30 * 60), polylines),
+            PrintMode::Schedule60 => PrintTask::Scheduled(Duration::from_secs(60 * 60), polylines),
         }
     }
 }
@@ -206,7 +207,10 @@ mod tests {
         let mode = PrintMode::Schedule5;
         let polylines = vec![];
         match mode.to_print_task(polylines.clone()) {
-            PrintTask::Every5Min(p) => assert_eq!(p, polylines),
+            PrintTask::Duration(d, p) => {
+                assert_eq!(d, Duration::from_secs(60 * 5));
+                assert_eq!(p, polylines);
+            },
             t @ _ => panic!("Task was {:?}", t),
         }
     }
