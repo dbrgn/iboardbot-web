@@ -16,14 +16,29 @@ Work in progress.
 
 ## Starting
 
-This project requires Rust nightly.
+This project currently requires Rust nightly. The easiest way to get that is
+through [rustup](https://rustup.rs/).
 
 To start the server:
 
-    $ cargo run /dev/<ttyACMx>
+    $ cargo run <device>
 
-## Fabric
+If you use the original iBoardBot Arduino, then the device will probably be
+`/dev/ttyACM0`.
 
-Fabric was built with the following options:
+Now the server is running on `http://127.0.0.1:8000/`.
+
+## Fabric.js
+
+Fabric (used for the preview in the frontend) was built with the following options:
 
     $ node build.js modules=interaction,text,no-svg-export
+
+## License
+
+Licensed under either of
+
+ * Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or
+   http://www.apache.org/licenses/LICENSE-2.0)
+ * MIT license ([LICENSE-MIT](LICENSE-MIT) or
+   http://opensource.org/licenses/MIT) at your option.
