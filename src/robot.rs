@@ -9,8 +9,8 @@ use regex::Regex;
 use serial::{self, BaudRate, PortSettings, SerialPort};
 use svg2polylines::Polyline;
 
-const IBB_WIDTH: f64 = 358.0;
-const IBB_HEIGHT: f64 = 123.0;
+const IBB_WIDTH: u16 = 358;
+const IBB_HEIGHT: u16 = 123;
 const TIMEOUT_MS_SERIAL: u64 = 1000;
 const TIMEOUT_MS_CHANNEL: u64 = 50;
 
@@ -23,15 +23,24 @@ pub struct Sketch<'a> {
 }
 
 enum Command {
+    /// Start of block
     BlockStart,
+    /// This is block number n
     BlockNumber(u16),
+    /// Start drawing
     StartDrawing,
+    /// Stop drawing
     StopDrawing,
+    /// Lift up the pen with the servo
     PenLift,
+    /// Lower down the pen with the servo. This will disable the eraser.
     PenDown,
+    /// Enable the eraser. This will also lift up the pen.
+    EnableEraser,
+    /// Move to the specified coordinates
     Move(u16, u16),
+    /// Wait n seconds
     Wait(u8),
-    Erase,
 }
 
 impl Command {
@@ -61,7 +70,7 @@ impl Command {
                 };
                 [0xfa, 0x60, seconds]
             },
-            Command::Erase => [0xfa, 0x50, 0x00],
+            Command::EnableEraser => [0xfa, 0x50, 0x00],
         }
     }
 }
@@ -70,8 +79,8 @@ impl Command {
 fn fix_x(x: f64) -> f64 {
     if x < 0.0 {
         0.0
-    } else if x > IBB_WIDTH {
-        IBB_WIDTH
+    } else if x > (IBB_WIDTH as f64) {
+        IBB_WIDTH as f64
     } else {
         x
     }
@@ -81,12 +90,12 @@ fn fix_x(x: f64) -> f64 {
 fn fix_y(y: f64) -> f64 {
     // Invert y coordinate, since SVG uses the top left as 0 coordinate,
     // while the IBB uses the bottom left as 0 coordinate.
-    let yy = IBB_HEIGHT - y;
+    let yy = (IBB_HEIGHT as f64) - y;
 
     if yy < 0.0 {
         0.0
-    } else if yy > IBB_HEIGHT {
-        IBB_HEIGHT
+    } else if yy > (IBB_HEIGHT as f64) {
+        IBB_HEIGHT as f64
     } else {
         yy
     }
@@ -106,13 +115,59 @@ impl<'a> Sketch<'a> {
         self.buf.extend_from_slice(&command.to_bytes());
     }
 
-    /// Convert the sketch into one or more byte vectors (blocks), ready to be
-    /// sent to the robot via serial.
-    pub fn into_blocks(mut self) -> Vec<Block> {
-        // First, add all commands to a buffer
-        self.add_command(Command::StartDrawing);
+    /// Erase the entire board.
+    /// Note that this does not contain the `StartDrawing` and `Stop Drawing`
+    /// commands!
+    fn erase_all(&mut self) {
+        self.add_command(Command::PenLift);
+        self.add_command(Command::Move(0, IBB_HEIGHT * 10));
+        self.add_command(Command::EnableEraser);
+        let mut y = IBB_HEIGHT;
+        let y_step = 10;
+        loop {
+            // Loop until we're at the bottom
+            if y <= 0 {
+                break;
+            }
+
+            // Move to right and step down
+            self.add_command(Command::Move(IBB_WIDTH * 10, y * 10));
+            if y > y_step {
+                y -= y_step;
+            } else {
+                y = 0;
+            }
+
+            // Move back to left and step down
+            self.add_command(Command::Move(IBB_WIDTH * 10, y * 10));
+            self.add_command(Command::Move(0, y * 10));
+            if y > y_step {
+                y -= y_step;
+            } else {
+                y = 0;
+            }
+            self.add_command(Command::Move(0, y * 10));
+        }
         self.add_command(Command::PenLift);
         self.add_command(Command::Move(0, 0));
+    }
+
+    /// Convert the sketch into one or more byte vectors (blocks), ready to be
+    /// sent to the robot via serial.
+    pub fn into_blocks(mut self, erase: bool) -> Vec<Block> {
+        // Start a new drawing
+        self.add_command(Command::StartDrawing);
+
+        // First, erase the entire board.
+        if erase {
+            self.erase_all();
+        } else {
+            // If we used the eraser, we're already at `(0, 0)` coordinates.
+            self.add_command(Command::PenLift);
+            self.add_command(Command::Move(0, 0));
+        }
+
+        // Now add the drawing commands to the buffer
         for polyline in self.polylines {
             if polyline.len() < 2 {
                 warn!("Skipping polyline with less than 2 coordinate pairs");
@@ -127,6 +182,8 @@ impl<'a> Sketch<'a> {
             }
             self.add_command(Command::PenLift);
         }
+
+        // Move back to start, done
         self.add_command(Command::Move(0, 0));
         self.add_command(Command::StopDrawing);
 
@@ -192,7 +249,7 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<Vec<Polyline>> {
                 Ok(polylines) => {
                     println!("Received task");
                     let sketch = Sketch::new(&polylines);
-                    for block in sketch.into_blocks() {
+                    for block in sketch.into_blocks(true) {
                         blocks_queue.push_back(block);
                     }
                     println!("{} block(s) in queue", blocks_queue.len());
@@ -278,7 +335,7 @@ mod test {
     fn test_empty_sketch() {
         let polylines: Vec<Polyline> = vec![];
         let sketch = Sketch::new(&polylines);
-        let blocks = sketch.into_blocks();
+        let blocks = sketch.into_blocks(false);
         assert_eq!(blocks.len(), 1);
         assert_eq!(blocks[0], vec![
             0xfa, 0x9f, 0xa1, // Block start
@@ -300,7 +357,7 @@ mod test {
             ]
         ];
         let sketch = Sketch::new(&polylines);
-        let blocks = sketch.into_blocks();
+        let blocks = sketch.into_blocks(false);
         assert_eq!(blocks.len(), 1);
         assert_eq!(blocks[0], vec![
             0xfa, 0x9f, 0xa1, // Block start
@@ -326,7 +383,7 @@ mod test {
         }
         let polylines = vec![polyline];
         let sketch = Sketch::new(&polylines);
-        let blocks = sketch.into_blocks();
+        let blocks = sketch.into_blocks(false);
         assert_eq!(blocks.len(), 1);
         assert_eq!(blocks[0].len(), 768);
     }
@@ -340,7 +397,7 @@ mod test {
         }
         let polylines = vec![polyline];
         let sketch = Sketch::new(&polylines);
-        let blocks = sketch.into_blocks();
+        let blocks = sketch.into_blocks(false);
         assert_eq!(blocks.len(), 2);
         assert_eq!(blocks[0].len(), 768);
         assert_eq!(blocks[1].len(), 12);
