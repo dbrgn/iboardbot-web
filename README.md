@@ -8,6 +8,8 @@ Raspberry Pi.
 
 This project requires the iBoardBot to load [my fork of the firmware](https://github.com/dbrgn/iBoardbot).
 
+This is what it looks like in the browser:
+
 ![screenshot](screenshot-small.png)
 
 Work in progress.
