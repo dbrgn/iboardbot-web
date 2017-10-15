@@ -25,6 +25,7 @@ function loadSvg(ev, svg, canvas) {
             if (this.status == 200) {
                 // Success
                 const polylines = JSON.parse(this.response);
+                canvas.clear();
                 drawPreview(canvas, polylines);
             } else {
                 // Error
