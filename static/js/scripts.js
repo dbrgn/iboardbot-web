@@ -74,6 +74,13 @@ function drawPreview(canvas, polylines) {
  */
 function printObject(svg, canvas) {
     return function(clickEvent) {
+        const printMode = document.querySelector('input[name=mode]:checked').value;
+
+        if (canvas.getObjects().length == 0) {
+            alert('No object loaded. Please choose an SVG file first.');
+            return;
+        }
+
         canvas.forEachObject((obj, i) => {
             console.debug('Object', i + ':');
             const dx = (obj.left - obj._originalLeft) / PREVIEW_SCALE_FACTOR;
@@ -87,7 +94,11 @@ function printObject(svg, canvas) {
             request.onload = function() {
                 if (this.status == 200) {
                     // Success TODO
-                    alert('Printing!');
+                    if (printMode == 'once') {
+                        alert('Printing!');
+                    } else {
+                        alert('Scheduled printing!');
+                    }
                 } else {
                     // Error
                     console.error('Error: HTTP', this.status);
@@ -104,6 +115,7 @@ function printObject(svg, canvas) {
                 'offset_y': dy,
                 'scale_x': obj.scaleX,
                 'scale_y': obj.scaleY,
+                'mode': printMode,
             }));
         });
     }

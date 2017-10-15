@@ -22,6 +22,15 @@ pub struct Sketch<'a> {
     polylines: &'a [Polyline],
 }
 
+#[derive(Debug)]
+pub enum PrintTask {
+    Once(Vec<Polyline>),
+    Every5Min(Vec<Polyline>),
+    Every15Min(Vec<Polyline>),
+    Every30Min(Vec<Polyline>),
+    Every60Min(Vec<Polyline>),
+}
+
 enum Command {
     /// Start of block
     BlockStart,
@@ -217,7 +226,7 @@ fn setup_serial<P: SerialPort>(port: &mut P, baud_rate: BaudRate) -> io::Result<
 ///
 /// The return value is the sending end of a channel. Over this channel, a list
 /// of polylines can be sent.
-pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<Vec<Polyline>> {
+pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<PrintTask> {
     // Connect to serial device
     println!("Connecting to {} with baud rate {}...", device, baud_rate.speed());
     let mut port = serial::open(device)
@@ -243,14 +252,22 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<Vec<Polyline>> {
 
         loop {
             // Check for a new printing task
-            let task: Result<Vec<Polyline>, RecvTimeoutError> =
+            let task: Result<PrintTask, RecvTimeoutError> =
                 rx.recv_timeout(Duration::from_millis(TIMEOUT_MS_CHANNEL));
             match task {
-                Ok(polylines) => {
-                    println!("Received task");
-                    let sketch = Sketch::new(&polylines);
-                    for block in sketch.into_blocks(true) {
-                        blocks_queue.push_back(block);
+                Ok(task) => {
+                    print!("Received print task: ");
+                    match task {
+                        PrintTask::Once(polylines) => {
+                            println!("Scheduling once");
+                            let sketch = Sketch::new(&polylines);
+                            for block in sketch.into_blocks(true) {
+                                blocks_queue.push_back(block);
+                            }
+                        },
+                        t @ _ => {
+                            println!("Ignoring task: {:?}", t);
+                        }
                     }
                     println!("{} block(s) in queue", blocks_queue.len());
                 },

@@ -4,6 +4,7 @@
 
 extern crate bufstream;
 extern crate docopt;
+extern crate job_scheduler;
 #[macro_use] extern crate log;
 extern crate regex;
 extern crate rocket;
@@ -28,7 +29,9 @@ use rocket_contrib::Json;
 use serial::BaudRate;
 use svg2polylines::Polyline;
 
-type RobotQueue = Arc<Mutex<Sender<Vec<Polyline>>>>;
+use robot::PrintTask;
+
+type RobotQueue = Arc<Mutex<Sender<PrintTask>>>;
 
 const USAGE: &'static str = "
 iBoardBot Web: Cloudless drawing fun.
@@ -65,12 +68,35 @@ struct PreviewRequest {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "lowercase")]
+enum PrintMode {
+    Once,
+    Schedule5,
+    Schedule15,
+    Schedule30,
+    Schedule60,
+}
+
+impl PrintMode {
+    fn to_print_task(&self, polylines: Vec<Polyline>) -> PrintTask {
+        match *self {
+            PrintMode::Once => PrintTask::Once(polylines),
+            PrintMode::Schedule5 => PrintTask::Every5Min(polylines),
+            PrintMode::Schedule15 => PrintTask::Every15Min(polylines),
+            PrintMode::Schedule30 => PrintTask::Every30Min(polylines),
+            PrintMode::Schedule60 => PrintTask::Every60Min(polylines),
+        }
+    }
+}
+
+#[derive(Deserialize, Debug)]
 struct PrintRequest {
     svg: String,
     offset_x: f64,
     offset_y: f64,
     scale_x: f64,
     scale_y: f64,
+    mode: PrintMode,
 }
 
 #[derive(Serialize, Debug)]
@@ -102,6 +128,7 @@ fn print(request: Json<PrintRequest>, robot_queue: State<RobotQueue>)
         -> Result<(), status::Custom<Json<ErrorDetails>>> {
     // Parse SVG into list of polylines
     let print_request = request.into_inner();
+    println!("Requested print mode: {:?}", print_request.mode);
     let mut polylines = match svg2polylines::parse(&print_request.svg) {
         Ok(polylines) => polylines,
         Err(e) => return Err(status::Custom(Status::BadRequest, Json(ErrorDetails { details: e }))),
@@ -124,7 +151,8 @@ fn print(request: Json<PrintRequest>, robot_queue: State<RobotQueue>)
         ),
         Ok(locked) => locked,
     };
-    if let Err(e) = tx.send(polylines) {
+    let task = print_request.mode.to_print_task(polylines);
+    if let Err(e) = tx.send(task) {
         return Err(
             status::Custom(
                 Status::InternalServerError,
@@ -157,4 +185,29 @@ fn main() {
         .manage(robot_queue)
         .mount("/", routes![index, files, preview, print])
         .launch();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn print_mode_to_print_task_once() {
+        let mode = PrintMode::Once;
+        let polylines = vec![];
+        match mode.to_print_task(polylines.clone()) {
+            PrintTask::Once(p) => assert_eq!(p, polylines),
+            t @ _ => panic!("Task was {:?}", t),
+        }
+    }
+
+    #[test]
+    fn print_mode_to_print_task_every() {
+        let mode = PrintMode::Schedule5;
+        let polylines = vec![];
+        match mode.to_print_task(polylines.clone()) {
+            PrintTask::Every5Min(p) => assert_eq!(p, polylines),
+            t @ _ => panic!("Task was {:?}", t),
+        }
+    }
 }
