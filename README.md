@@ -8,6 +8,14 @@ Raspberry Pi.
 
 Work in progress.
 
+## Starting
+
+This project requires Rust nightly.
+
+To start the server:
+
+    $ cargo run
+
 ## Fabric
 
 Fabric was built with the following options:
