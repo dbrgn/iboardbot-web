@@ -89,7 +89,7 @@ fn config(config: State<Config>) -> JsonValue {
 
 #[get("/list")]
 fn list(config: State<Config>) -> Result<Json<Vec<String>>, status::Custom<Json<ErrorDetails>>> {
-    let svg_files = read_dir(&config.svg_dir)
+    let mut svg_files = read_dir(&config.svg_dir)
         // The `read_dir` function returns an iterator over results.
         // If any iterator entry fails, fail the whole iterator.
         .and_then(|iter| iter.collect::<Result<Vec<DirEntry>, io::Error>>())
@@ -112,6 +112,7 @@ fn list(config: State<Config>) -> Result<Json<Vec<String>>, status::Custom<Json<
                 details: "Could not read files in SVG directory".into()
             })
         ))?;
+    svg_files.sort();
     Ok(Json(svg_files))
 }
 
