@@ -29,7 +29,7 @@ use docopt::Docopt;
 use rocket::response::{NamedFile, status};
 use rocket::http::Status;
 use rocket::State;
-use rocket_contrib::Json;
+use rocket_contrib::{Json, JsonValue};
 use serial::BaudRate;
 use svg2polylines::Polyline;
 
@@ -37,7 +37,9 @@ use robot::PrintTask;
 
 type RobotQueue = Arc<Mutex<Sender<PrintTask>>>;
 
-#[derive(Debug, Deserialize)]
+/// Note: This struct can be queried over HTTP,
+/// so be careful with sensitive data.
+#[derive(Debug, Serialize, Deserialize, Clone)]
 struct Config {
     device: String,
     svg_dir: String,
@@ -68,9 +70,21 @@ fn index() -> io::Result<NamedFile> {
     NamedFile::open("static/index.html")
 }
 
+#[get("/headless")]
+fn headless() -> io::Result<NamedFile> {
+    NamedFile::open("static/headless.html")
+}
+
 #[get("/static/<file..>")]
 fn files(file: PathBuf) -> Option<NamedFile> {
     NamedFile::open(Path::new("static/").join(file)).ok()
+}
+
+#[get("/config")]
+fn config(config: State<Config>) -> JsonValue {
+    serde_json::to_value((*config).clone())
+        .expect("Could not serialize Config object")
+        .into()
 }
 
 #[get("/list")]
@@ -233,7 +247,7 @@ fn main() {
     rocket::ignite()
         .manage(robot_queue)
         .manage(config)
-        .mount("/", routes![index, files, preview, print, list])
+        .mount("/", routes![index, headless, files, preview, print, list, config])
         .launch();
 }
 

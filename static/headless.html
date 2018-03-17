@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf8">
+        <title>iBoardBot (Headless Config)</title>
+        <link rel="stylesheet" type="text/css" href="/static/css/style.css">
+    </head>
+    <body>
+        <h1>iBoardBot Web (Headless Config)</h1>
+
+        <p>In headless mode, the iBoardBot reads SVG files from a predefined
+        directory and draws the files from that directory in a preconfigured
+        interval.</p>
+
+        <h2>Configuration</h2>
+
+        <div id="config">
+            <em class="loading">Loading...</em>
+            <em class="error" hidden>Error loading list of SVG files</em>
+            <dl class="items" hidden></dl>
+        </div>
+        <h2>SVG Files</h2>
+
+        <div id="svgfiles">
+            <em class="loading">Loading...</em>
+            <em class="error" hidden>Error loading list of SVG files</em>
+            <em class="nofiles" hidden>No SVG files found</em>
+            <ul class="files" hidden></ul>
+        </div>
+
+        <footer>
+            Software by <a href="https://dbrgn.ch/">Danilo Bargen</a> |
+            Fork me <a href="https://github.com/dbrgn/iboardbot-web">on GitHub</a>
+        </footer>
+
+        <script type="text/javascript" src="/static/js/common.js"></script>
+        <script type="text/javascript" src="/static/js/headless.js"></script>
+    </body>
+</html>
