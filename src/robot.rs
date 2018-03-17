@@ -8,6 +8,7 @@ use std::time::Duration;
 use bufstream::BufStream;
 use regex::Regex;
 use scheduled_executor::CoreExecutor;
+use scheduled_executor::executor::TaskHandle;
 use serial::{self, BaudRate, PortSettings, SerialPort};
 use svg2polylines::Polyline;
 
@@ -251,6 +252,7 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<PrintTask> {
 
         // Initialize the job scheduler
         let executor = CoreExecutor::with_name("iboardbot_scheduler").unwrap();
+        let mut current_job: Option<TaskHandle> = None;
 
         loop {
             // Check for a new printing task
@@ -258,6 +260,11 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<PrintTask> {
                 rx.recv_timeout(Duration::from_millis(TIMEOUT_MS_CHANNEL));
             match task {
                 Ok(task) => {
+                    if let Some(ref handle) = current_job {
+                        // Handle existing job
+                        print!("Cancelling old print job");
+                        handle.stop();
+                    }
                     print!("Received print task: ");
                     match task {
                         PrintTask::Once(polylines) => {
@@ -275,7 +282,7 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<PrintTask> {
                         PrintTask::Scheduled(interval, polylines) => {
                             println!("Scheduling every {} minutes", interval.as_secs() / 60);
                             let blocks_queue = blocks_queue.clone();
-                            executor.schedule_fixed_rate(
+                            current_job = Some(executor.schedule_fixed_rate(
                                 Duration::from_secs(2), // Wait 2 seconds before scheduling the first task
                                 interval, // After that, schedule in a fixed interval
                                 move |_handle| {
@@ -290,7 +297,7 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<PrintTask> {
                                         Err(e) => error!("Could not unlock blocks queue mutex: {}", e),
                                     }
                                 }
-                            );
+                            ));
                         },
                     }
                     if let Ok(queue) = blocks_queue.lock() {
