@@ -6,7 +6,8 @@ unauthenticated, unencrypted cloud solution :)
 Instead, it communicates with the iBoardBot through serial, for example from a
 Raspberry Pi.
 
-This project requires the iBoardBot to load [my fork of the firmware](https://github.com/dbrgn/iBoardbot).
+This project requires the iBoardBot to load [my fork of the
+firmware](https://github.com/dbrgn/iBoardbot).
 
 This is what it looks like in the browser:
 
@@ -21,7 +22,15 @@ through [rustup](https://rustup.rs/).
 
 To start the server:
 
-    $ cargo run <device>
+    $ cargo run -c config.json
+
+The `-c` argument is optional, it defaults to `config.json`.
+
+The configfile needs to look like this:
+
+    {
+        "device": "/dev/ttyACM0"
+    }
 
 If you use the original iBoardBot Arduino, then the device will probably be
 `/dev/ttyACM0`.

@@ -16,8 +16,10 @@ extern crate svg2polylines;
 
 mod robot;
 
+use std::fs::File;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::process;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::Sender;
 use std::time::Duration;
@@ -34,23 +36,29 @@ use robot::PrintTask;
 
 type RobotQueue = Arc<Mutex<Sender<PrintTask>>>;
 
+#[derive(Debug, Deserialize)]
+struct Config {
+    device: String,
+}
+
 const USAGE: &'static str = "
 iBoardBot Web: Cloudless drawing fun.
 
 Usage:
-    iboardbot-web <device>
+    iboardbot-web [-c <configfile>]
 
 Example:
 
-    iboardbot-web /dev/ttyACM0
+    iboardbot-web -c config.json
 
 Options:
-    -h --help  Show this screen.
+    -h --help        Show this screen.
+    -c <configfile>  Path to config file [default: config.json].
 ";
 
 #[derive(Debug, Deserialize)]
 struct Args {
-    arg_device: String,
+    flag_c: String,
 }
 
 #[get("/")]
@@ -174,9 +182,19 @@ fn main() {
                             .and_then(|d| d.deserialize())
                             .unwrap_or_else(|e| e.exit());
 
+    // Parse config
+    let configfile = File::open(&args.flag_c).unwrap_or_else(|e| {
+        println!("Could not open configfile ({}): {}", &args.flag_c, e);
+        process::exit(1);
+    });
+    let config: Config = serde_json::from_reader(configfile).unwrap_or_else(|e| {
+        println!("Could not parse configfile ({}): {}", &args.flag_c, e);
+        process::exit(1);
+    });
+
     // Launch robot thread
     let baud_rate = BaudRate::Baud115200;
-    let tx = robot::communicate(&args.arg_device, baud_rate);
+    let tx = robot::communicate(&config.device, baud_rate);
 
     // Initialize server state
     let robot_queue = Arc::new(Mutex::new(tx));
