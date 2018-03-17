@@ -60,6 +60,7 @@ function loadConfig() {
             const configEntries = [
                 {key: "device", label: "Device"},
                 {key: "svg_dir", label: "SVG Directory"},
+                {key: "interval_seconds", label: "Start drawing every n seconds"},
             ];
             for (const item of configEntries) {
                 const key = document.createElement('dt');

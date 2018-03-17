@@ -43,6 +43,7 @@ type RobotQueue = Arc<Mutex<Sender<PrintTask>>>;
 struct Config {
     device: String,
     svg_dir: String,
+    interval_seconds: u32
 }
 
 const USAGE: &'static str = "
@@ -129,6 +130,7 @@ enum PrintMode {
     Schedule15,
     Schedule30,
     Schedule60,
+    ScheduleCustom(Duration),
 }
 
 impl PrintMode {
@@ -139,6 +141,7 @@ impl PrintMode {
             PrintMode::Schedule15 => PrintTask::Scheduled(Duration::from_secs(15 * 60), polylines),
             PrintMode::Schedule30 => PrintTask::Scheduled(Duration::from_secs(30 * 60), polylines),
             PrintMode::Schedule60 => PrintTask::Scheduled(Duration::from_secs(60 * 60), polylines),
+            PrintMode::ScheduleCustom(duration) => PrintTask::Scheduled(duration, polylines),
         }
     }
 }

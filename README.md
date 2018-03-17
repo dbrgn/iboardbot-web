@@ -30,12 +30,14 @@ The configfile needs to look like this:
 
     {
         "device": "/dev/ttyACM0",
-        "svg_dir": "/path/to/svgdir"
+        "svg_dir": "/path/to/svgdir",
+        "interval_seconds": 900
     }
 
 If you use the original iBoardBot Arduino, then the `device` will probably be
 `/dev/ttyACM0`. The `svg_dir` points to the directory where SVG files are
-stored for printing.
+stored for printing. And the `interval_seconds` value will determine in which
+interval to start draws.
 
 Now the server is running on `http://127.0.0.1:8000/`.
 
