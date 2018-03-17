@@ -16,7 +16,8 @@ extern crate svg2polylines;
 
 mod robot;
 
-use std::fs::File;
+use std::ffi::OsStr;
+use std::fs::{File, DirEntry, read_dir};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process;
@@ -39,6 +40,7 @@ type RobotQueue = Arc<Mutex<Sender<PrintTask>>>;
 #[derive(Debug, Deserialize)]
 struct Config {
     device: String,
+    svg_dir: String,
 }
 
 const USAGE: &'static str = "
@@ -69,6 +71,34 @@ fn index() -> io::Result<NamedFile> {
 #[get("/static/<file..>")]
 fn files(file: PathBuf) -> Option<NamedFile> {
     NamedFile::open(Path::new("static/").join(file)).ok()
+}
+
+#[get("/list")]
+fn list(config: State<Config>) -> Result<Json<Vec<String>>, status::Custom<Json<ErrorDetails>>> {
+    let svg_files = read_dir(&config.svg_dir)
+        // The `read_dir` function returns an iterator over results.
+        // If any iterator entry fails, fail the whole iterator.
+        .and_then(|iter| iter.collect::<Result<Vec<DirEntry>, io::Error>>())
+        // Filter directory entries
+        .map(|entries| entries.iter()
+             // Get filepath for entry
+            .map(|entry| entry.path())
+             // We only want files
+            .filter(|path| path.is_file())
+            // Map to filename
+            .filter_map(|ref path| path.file_name().map(OsStr::to_os_string).and_then(|oss| oss.into_string().ok()))
+            // We only want .svg files
+            .filter(|filename| filename.ends_with(".svg"))
+            // Collect vector of strings
+            .collect::<Vec<String>>()
+        )
+        .map_err(|_e| status::Custom(
+            Status::InternalServerError,
+            Json(ErrorDetails {
+                details: "Could not read files in SVG directory".into()
+            })
+        ))?;
+    Ok(Json(svg_files))
 }
 
 #[derive(Deserialize, Debug)]
@@ -202,7 +232,8 @@ fn main() {
     // Start web server
     rocket::ignite()
         .manage(robot_queue)
-        .mount("/", routes![index, files, preview, print])
+        .manage(config)
+        .mount("/", routes![index, files, preview, print, list])
         .launch();
 }
 
