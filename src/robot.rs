@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 use std::io::{self, BufRead, Write};
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Sender, RecvTimeoutError};
 use std::thread;
 use std::time::Duration;
@@ -28,7 +29,7 @@ pub struct Sketch<'a> {
 #[derive(Debug)]
 pub enum PrintTask {
     Once(Vec<Polyline>),
-    Scheduled(Duration, Vec<Polyline>),
+    Scheduled(Duration, Vec<Vec<Polyline>>),
 }
 
 enum Command {
@@ -253,6 +254,7 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<PrintTask> {
         // Initialize the job scheduler
         let executor = CoreExecutor::with_name("iboardbot_scheduler").unwrap();
         let mut current_job: Option<TaskHandle> = None;
+        let iteration = Arc::new(AtomicUsize::new(0));
 
         loop {
             // Check for a new printing task
@@ -265,6 +267,9 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<PrintTask> {
                         print!("Cancelling old print job");
                         handle.stop();
                     }
+                    // Reset iteration count
+                    iteration.store(0, Ordering::SeqCst);
+
                     print!("Received print task: ");
                     match task {
                         PrintTask::Once(polylines) => {
@@ -279,15 +284,23 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<PrintTask> {
                                 Err(e) => error!("Could not unlock blocks queue mutex: {}", e),
                             }
                         },
-                        PrintTask::Scheduled(interval, polylines) => {
+                        PrintTask::Scheduled(interval, polylines_vec) => {
                             println!("Scheduling every {} minutes", interval.as_secs() / 60);
                             let blocks_queue = blocks_queue.clone();
+                            let iteration_clone = iteration.clone();
                             current_job = Some(executor.schedule_fixed_rate(
                                 Duration::from_secs(2), // Wait 2 seconds before scheduling the first task
                                 interval, // After that, schedule in a fixed interval
                                 move |_handle| {
                                     println!("Starting scheduled print");
-                                    let sketch = Sketch::new(&polylines);
+
+                                    // Determine which polylines to print
+                                    let i = iteration_clone.fetch_add(1, Ordering::SeqCst);
+                                    let index = i % polylines_vec.len();
+                                    let polylines = &polylines_vec[index];
+
+                                    // Create and enqueue sketch
+                                    let sketch = Sketch::new(polylines);
                                     match blocks_queue.lock() {
                                         Ok(mut queue) => {
                                             for block in sketch.into_blocks(true) {

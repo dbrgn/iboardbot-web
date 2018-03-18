@@ -16,9 +16,10 @@ extern crate svg2polylines;
 
 mod robot;
 
+use std::convert::From;
 use std::ffi::OsStr;
 use std::fs::{File, DirEntry, read_dir};
-use std::io;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::{Arc, Mutex};
@@ -43,14 +44,27 @@ type RobotQueue = Arc<Mutex<Sender<PrintTask>>>;
 struct Config {
     device: String,
     svg_dir: String,
-    interval_seconds: u32
+    interval_seconds: u64,
+}
+
+#[derive(Debug)]
+enum HeadlessError {
+    Io(io::Error),
+    SvgParse(String),
+    Queue(String),
+}
+
+impl From<io::Error> for HeadlessError {
+    fn from(e: io::Error) -> Self {
+        HeadlessError::Io(e)
+    }
 }
 
 const USAGE: &'static str = "
 iBoardBot Web: Cloudless drawing fun.
 
 Usage:
-    iboardbot-web [-c <configfile>]
+    iboardbot-web [-c <configfile>] [--headless]
 
 Example:
 
@@ -59,11 +73,13 @@ Example:
 Options:
     -h --help        Show this screen.
     -c <configfile>  Path to config file [default: config.json].
+    --headless       Headless mode (start drawing immediately)
 ";
 
 #[derive(Debug, Deserialize)]
 struct Args {
     flag_c: String,
+    flag_headless: bool,
 }
 
 #[get("/")]
@@ -88,9 +104,9 @@ fn config(config: State<Config>) -> JsonValue {
         .into()
 }
 
-#[get("/list")]
-fn list(config: State<Config>) -> Result<Json<Vec<String>>, status::Custom<Json<ErrorDetails>>> {
-    let mut svg_files = read_dir(&config.svg_dir)
+/// Return a list of SVG files from the SVG dir.
+fn get_svg_files(dir: &str) -> Result<Vec<String>, io::Error> {
+    let mut svg_files = read_dir(dir)
         // The `read_dir` function returns an iterator over results.
         // If any iterator entry fails, fail the whole iterator.
         .and_then(|iter| iter.collect::<Result<Vec<DirEntry>, io::Error>>())
@@ -106,14 +122,20 @@ fn list(config: State<Config>) -> Result<Json<Vec<String>>, status::Custom<Json<
             .filter(|filename| filename.ends_with(".svg"))
             // Collect vector of strings
             .collect::<Vec<String>>()
-        )
+        )?;
+    svg_files.sort();
+    Ok(svg_files)
+}
+
+#[get("/list")]
+fn list(config: State<Config>) -> Result<Json<Vec<String>>, status::Custom<Json<ErrorDetails>>> {
+    let svg_files = get_svg_files(&config.svg_dir)
         .map_err(|_e| status::Custom(
             Status::InternalServerError,
             Json(ErrorDetails {
                 details: "Could not read files in SVG directory".into()
             })
         ))?;
-    svg_files.sort();
     Ok(Json(svg_files))
 }
 
@@ -130,18 +152,16 @@ enum PrintMode {
     Schedule15,
     Schedule30,
     Schedule60,
-    ScheduleCustom(Duration),
 }
 
 impl PrintMode {
     fn to_print_task(&self, polylines: Vec<Polyline>) -> PrintTask {
         match *self {
             PrintMode::Once => PrintTask::Once(polylines),
-            PrintMode::Schedule5 => PrintTask::Scheduled(Duration::from_secs(5 * 60), polylines),
-            PrintMode::Schedule15 => PrintTask::Scheduled(Duration::from_secs(15 * 60), polylines),
-            PrintMode::Schedule30 => PrintTask::Scheduled(Duration::from_secs(30 * 60), polylines),
-            PrintMode::Schedule60 => PrintTask::Scheduled(Duration::from_secs(60 * 60), polylines),
-            PrintMode::ScheduleCustom(duration) => PrintTask::Scheduled(duration, polylines),
+            PrintMode::Schedule5 => PrintTask::Scheduled(Duration::from_secs(5 * 60), vec![polylines]),
+            PrintMode::Schedule15 => PrintTask::Scheduled(Duration::from_secs(15 * 60), vec![polylines]),
+            PrintMode::Schedule30 => PrintTask::Scheduled(Duration::from_secs(30 * 60), vec![polylines]),
+            PrintMode::Schedule60 => PrintTask::Scheduled(Duration::from_secs(60 * 60), vec![polylines]),
         }
     }
 }
@@ -224,6 +244,50 @@ fn print(request: Json<PrintRequest>, robot_queue: State<RobotQueue>)
     Ok(())
 }
 
+fn headless_start(robot_queue: RobotQueue, config: &Config) -> Result<(), HeadlessError> {
+    // Get SVG files to be printed
+    let svg_files = get_svg_files(&config.svg_dir)?;
+
+    // Read SVG files
+    let mut svgs = vec![];
+    let base_path = Path::new(&config.svg_dir);
+    for file in svg_files {
+        let mut svg = String::new();
+        let mut f = File::open(base_path.join(&file))?;
+        f.read_to_string(&mut svg)?;
+        svgs.push(svg);
+    }
+
+    // Parse SVG strings into lists of polylines
+    let polylines: Vec<_> = svgs.iter()
+        .map(|ref svg| {
+            svg2polylines::parse(svg).map_err(|e| HeadlessError::SvgParse(e))
+        })
+        .collect::<Result<Vec<_>, HeadlessError>>()?;
+
+    // TODO: Scale polylines
+
+    // Get access to queue
+    let tx = robot_queue
+        .lock()
+        .map_err(|e| HeadlessError::Queue(
+            format!("Could not communicate with robot thread: {}", e)
+        ))?;
+
+    // Create print task
+    let interval_duration = Duration::from_secs(config.interval_seconds);
+    let task = PrintTask::Scheduled(interval_duration, polylines);
+
+    // Send task to robot
+    tx.send(task)
+        .map_err(|e| HeadlessError::Queue(
+            format!("Could not send print request to robot thread: {}", e)
+        ))?;
+
+    info!("Printing...");
+    Ok(())
+}
+
 fn main() {
     // Parse args
     let args: Args = Docopt::new(USAGE)
@@ -247,11 +311,32 @@ fn main() {
     // Initialize server state
     let robot_queue = Arc::new(Mutex::new(tx));
 
+    // Load routes
+    let routes = match args.flag_headless {
+        true => routes![headless, files, list, config],
+        false => routes![index, headless, files, preview, print, list, config],
+    };
+
+    // Print mode
+    match args.flag_headless {
+        true => println!("Starting in headless mode"),
+        false => println!("Starting in normal mode"),
+    };
+
+    // If we're in headless mode, start the print jobs
+    if args.flag_headless {
+        headless_start(robot_queue.clone(), &config)
+            .unwrap_or_else(|e| {
+                println!("Could not start headless mode: {:?}", e);
+                process::exit(2);
+            });
+    }
+
     // Start web server
     rocket::ignite()
         .manage(robot_queue)
         .manage(config)
-        .mount("/", routes![index, headless, files, preview, print, list, config])
+        .mount("/", routes)
         .launch();
 }
 
