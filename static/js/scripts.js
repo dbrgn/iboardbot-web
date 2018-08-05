@@ -81,7 +81,7 @@ function printObject(svg, canvas) {
             request.open('POST', '/print/', true);
             request.setRequestHeader('Content-Type', 'application/json');
             request.onload = function() {
-                if (this.status == 200) {
+                if (this.status == 204) {
                     // Success TODO
                     if (printMode == 'once') {
                         alert('Printing!');

@@ -1,37 +1,38 @@
-#![feature(plugin)]
-#![feature(decl_macro)]
-#![plugin(rocket_codegen)]
-
+extern crate actix_web;
 extern crate bufstream;
 extern crate docopt;
+extern crate futures;
 extern crate scheduled_executor;
 #[macro_use] extern crate log;
 extern crate regex;
-extern crate rocket;
-extern crate rocket_contrib;
 #[macro_use] extern crate serde_derive;
 extern crate serde_json;
 extern crate serial;
+extern crate simplelog;
 extern crate svg2polylines;
 
 mod robot;
 
 use std::convert::From;
 use std::ffi::OsStr;
+use std::fmt;
 use std::fs::{File, DirEntry, read_dir};
 use std::io::{self, Read};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::Sender;
 use std::time::Duration;
 
+use actix_web::{AsyncResponder, HttpMessage};
+use actix_web::{App, HttpRequest, HttpResponse, Json, Result as ActixResult, ResponseError};
+use actix_web::fs::{StaticFiles, NamedFile};
+use actix_web::http::{Method, StatusCode};
+use actix_web::server::HttpServer;
 use docopt::Docopt;
-use rocket::response::{NamedFile, status};
-use rocket::http::Status;
-use rocket::State;
-use rocket_contrib::{Json, JsonValue};
+use futures::Future;
 use serial::BaudRate;
+use simplelog::{TermLogger, LevelFilter, Config as LogConfig};
 use svg2polylines::Polyline;
 
 use robot::PrintTask;
@@ -45,6 +46,14 @@ struct Config {
     device: String,
     svg_dir: String,
     interval_seconds: u64,
+}
+
+/// Application state.
+/// Every worker will have its own copy.
+#[derive(Debug, Clone)]
+struct State {
+    config: Config,
+    robot_queue: RobotQueue,
 }
 
 #[derive(Debug)]
@@ -82,26 +91,18 @@ struct Args {
     flag_headless: bool,
 }
 
-#[get("/")]
-fn index() -> io::Result<NamedFile> {
-    NamedFile::open("static/index.html")
+fn index_handler(_req: HttpRequest<State>) -> ActixResult<NamedFile> {
+    Ok(NamedFile::open("static/index.html")?)
 }
 
-#[get("/headless")]
-fn headless() -> io::Result<NamedFile> {
-    NamedFile::open("static/headless.html")
+fn headless_handler(_req: HttpRequest<State>) -> ActixResult<NamedFile> {
+    Ok(NamedFile::open("static/headless.html")?)
 }
 
-#[get("/static/<file..>")]
-fn files(file: PathBuf) -> Option<NamedFile> {
-    NamedFile::open(Path::new("static/").join(file)).ok()
-}
-
-#[get("/config")]
-fn config(config: State<Config>) -> JsonValue {
-    serde_json::to_value((*config).clone())
+fn config_handler(req: HttpRequest<State>) -> String {
+    serde_json::to_value(&req.state().config)
         .expect("Could not serialize Config object")
-        .into()
+        .to_string()
 }
 
 /// Return a list of SVG files from the SVG dir.
@@ -127,14 +128,10 @@ fn get_svg_files(dir: &str) -> Result<Vec<String>, io::Error> {
     Ok(svg_files)
 }
 
-#[get("/list")]
-fn list(config: State<Config>) -> Result<Json<Vec<String>>, status::Custom<Json<ErrorDetails>>> {
-    let svg_files = get_svg_files(&config.svg_dir)
-        .map_err(|_e| status::Custom(
-            Status::InternalServerError,
-            Json(ErrorDetails {
-                details: "Could not read files in SVG directory".into()
-            })
+fn list_handler(req: HttpRequest<State>) -> Result<Json<Vec<String>>, JsonError> {
+    let svg_files = get_svg_files(&req.state().config.svg_dir)
+        .map_err(|_e| JsonError::ServerError(
+            ErrorDetails::from("Could not read files in SVG directory")
         ))?;
     Ok(Json(svg_files))
 }
@@ -181,11 +178,49 @@ struct ErrorDetails {
     details: String,
 }
 
-#[post("/preview", format = "application/json", data = "<request>")]
-fn preview(request: Json<PreviewRequest>) -> Result<Json<Vec<Polyline>>, status::Custom<Json<ErrorDetails>>> {
-    match svg2polylines::parse(&request.into_inner().svg) {
+impl ErrorDetails {
+    fn from<S: Into<String>>(details: S) -> Self {
+        ErrorDetails {
+            details: details.into(),
+        }
+    }
+}
+
+#[derive(Debug)]
+enum JsonError {
+    ServerError(ErrorDetails),
+    ClientError(ErrorDetails),
+}
+
+impl fmt::Display for JsonError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let val = serde_json::to_value(match self {
+            JsonError::ServerError(details) => details,
+            JsonError::ClientError(details) => details,
+        });
+        write!(f, "{}", val.expect("Could not serialize error details"))
+    }
+
+}
+impl std::error::Error for JsonError { }
+impl ResponseError for JsonError {
+    fn error_response(&self) -> HttpResponse {
+        let mut builder = match self {
+            JsonError::ServerError(_) => HttpResponse::InternalServerError(),
+            JsonError::ClientError(_) => HttpResponse::BadRequest(),
+        };
+        builder
+            .content_type("application/json")
+            .body(self.to_string())
+    }
+}
+
+type JsonResult<T> = Result<T, JsonError>;
+
+fn preview_handler(req: Json<PreviewRequest>) -> JsonResult<Json<Vec<Polyline>>> {
+    match svg2polylines::parse(&req.svg) {
         Ok(polylines) => Ok(Json(polylines)),
-        Err(errmsg) => Err(status::Custom(Status::BadRequest, Json(ErrorDetails { details: errmsg }))),
+        Err(errmsg) => Err(JsonError::ClientError(ErrorDetails::from(errmsg))),
     }
 }
 
@@ -200,48 +235,39 @@ fn scale_polylines(polylines: &mut Vec<Polyline>, offset: (f64, f64), scale: (f6
     }
 }
 
-#[post("/print", format = "application/json", data = "<request>")]
-fn print(request: Json<PrintRequest>, robot_queue: State<RobotQueue>)
-        -> Result<(), status::Custom<Json<ErrorDetails>>> {
-    // Parse SVG into list of polylines
-    let print_request = request.into_inner();
-    println!("Requested print mode: {:?}", print_request.mode);
-    let mut polylines = match svg2polylines::parse(&print_request.svg) {
-        Ok(polylines) => polylines,
-        Err(e) => return Err(status::Custom(Status::BadRequest, Json(ErrorDetails { details: e }))),
-    };
+fn print_handler(req: HttpRequest<State>) -> impl Future<Item=HttpResponse, Error=JsonError> {
+    req.json()
+        .map_err(|e| JsonError::ServerError(ErrorDetails::from(
+            format!("Could not parse JSON payload: {}", e)
+        )))
+        .and_then(move |print_request: PrintRequest| {
+            // Parse SVG into list of polylines
+            println!("Requested print mode: {:?}", print_request.mode);
+            let mut polylines = match svg2polylines::parse(&print_request.svg) {
+                Ok(polylines) => polylines,
+                Err(e) => return Err(JsonError::ClientError(ErrorDetails::from(e))),
+            };
 
-    // Scale polylines
-    scale_polylines(&mut polylines,
-                    (print_request.offset_x, print_request.offset_y),
-                    (print_request.scale_x, print_request.scale_y));
+            // Scale polylines
+            scale_polylines(&mut polylines,
+                            (print_request.offset_x, print_request.offset_y),
+                            (print_request.scale_x, print_request.scale_y));
 
-    // Get access to queue
-    let tx = match robot_queue.inner().lock() {
-        Err(e) => return Err(
-            status::Custom(
-                Status::BadRequest,
-                Json(ErrorDetails {
-                    details: format!("Could not communicate with robot thread: {}", e),
-                })
-            )
-        ),
-        Ok(locked) => locked,
-    };
-    let task = print_request.mode.to_print_task(polylines);
-    if let Err(e) = tx.send(task) {
-        return Err(
-            status::Custom(
-                Status::InternalServerError,
-                Json(ErrorDetails {
-                    details: format!("Could not send print request to robot thread: {}", e),
-                })
-            )
-        )
-    };
+            // Get access to queue
+            let tx = req.state().robot_queue.lock()
+                .map_err(|e| JsonError::ClientError(ErrorDetails::from(
+                    format!("Could not communicate with robot thread: {}", e)
+                )))?;
+            let task = print_request.mode.to_print_task(polylines);
+            tx.send(task)
+                .map_err(|e| JsonError::ServerError(ErrorDetails::from(
+                    format!("Could not send print request to robot thread: {}", e)
+                )))?;
 
-    info!("Printing...");
-    Ok(())
+            info!("Printing...");
+            Ok(HttpResponse::new(StatusCode::NO_CONTENT))
+        })
+        .responder()
 }
 
 fn headless_start(robot_queue: RobotQueue, config: &Config) -> Result<(), HeadlessError> {
@@ -289,10 +315,14 @@ fn headless_start(robot_queue: RobotQueue, config: &Config) -> Result<(), Headle
 }
 
 fn main() {
+    // Init logger
+    TermLogger::init(LevelFilter::Info, LogConfig::default()).unwrap();
+
     // Parse args
     let args: Args = Docopt::new(USAGE)
                             .and_then(|d| d.deserialize())
                             .unwrap_or_else(|e| e.exit());
+    let headless_mode: bool = args.flag_headless;
 
     // Parse config
     let configfile = File::open(&args.flag_c).unwrap_or_else(|e| {
@@ -310,21 +340,19 @@ fn main() {
 
     // Initialize server state
     let robot_queue = Arc::new(Mutex::new(tx));
-
-    // Load routes
-    let routes = match args.flag_headless {
-        true => routes![headless, files, list, config],
-        false => routes![index, headless, files, preview, print, list, config],
+    let state = State {
+        config: config.clone(),
+        robot_queue: robot_queue.clone(),
     };
 
     // Print mode
-    match args.flag_headless {
+    match headless_mode {
         true => println!("Starting in headless mode"),
         false => println!("Starting in normal mode"),
     };
 
     // If we're in headless mode, start the print jobs
-    if args.flag_headless {
+    if headless_mode {
         headless_start(robot_queue.clone(), &config)
             .unwrap_or_else(|e| {
                 println!("Could not start headless mode: {:?}", e);
@@ -333,11 +361,26 @@ fn main() {
     }
 
     // Start web server
-    rocket::ignite()
-        .manage(robot_queue)
-        .manage(config)
-        .mount("/", routes)
-        .launch();
+    let interface = "127.0.0.1:8080";
+    println!("Listening on {}", interface);
+    HttpServer::new(move || {
+        let mut app = App::with_state(state.clone())
+            .handler("/static", StaticFiles::new("static").unwrap())
+            .route("/config/", Method::GET, config_handler)
+            .route("/list/", Method::GET, list_handler)
+            .route("/preview/", Method::POST, preview_handler)
+            .resource("/print/", |r| r.method(Method::POST).with_async(print_handler));
+        if headless_mode {
+            app = app.route("/", Method::GET, headless_handler);
+        } else{
+            app = app.route("/headless/", Method::GET, headless_handler); // For development
+            app = app.route("/", Method::GET, index_handler);
+        };
+        app
+    })
+        .bind(interface)
+        .unwrap()
+        .run();
 }
 
 #[cfg(test)]

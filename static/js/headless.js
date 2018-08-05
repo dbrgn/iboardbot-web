@@ -34,6 +34,10 @@ function loadSvgList() {
             // Show error
             const error = element.querySelector('.error');
             error.innerText = 'Error fetching SVG files (HTTP ' + this.status + ')';
+            try {
+                const parsedResponse = JSON.parse(this.response);
+                error.innerText += '\nDetails: ' + parsedResponse.details;
+            } catch {}
             error.hidden = false;
         }
     }

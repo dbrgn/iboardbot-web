@@ -17,7 +17,7 @@ Work in progress.
 
 ## Starting
 
-This project currently requires Rust nightly. The easiest way to get that is
+This project currently requires Rust 1.26+. The easiest way to get that is
 through [rustup](https://rustup.rs/).
 
 To start the server:
@@ -34,10 +34,10 @@ The configfile needs to look like this:
         "interval_seconds": 900
     }
 
-If you use the original iBoardBot Arduino, then the `device` will probably be
-`/dev/ttyACM0`. The `svg_dir` points to the directory where SVG files are
-stored for printing. And the `interval_seconds` value will determine in which
-interval to start draws.
+If you use the original iBoardBot Arduino via USB, then the `device` will
+probably be `/dev/ttyACM0`. The `svg_dir` points to the directory where SVG
+files are stored for printing. And the `interval_seconds` value will determine
+in which interval to start draws.
 
 Now the server is running on `http://127.0.0.1:8000/`.
 
