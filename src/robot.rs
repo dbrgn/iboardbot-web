@@ -28,10 +28,15 @@ pub struct Sketch<'a> {
 
 #[derive(Debug)]
 pub enum PrintTask {
+    /// Schedule a print task once.
     Once(Vec<Polyline>),
+    /// Schedule one or more print tasks every `Duration`.
+    /// If multiple tasks are specified, then another one is printed for every
+    /// iteration.
     Scheduled(Duration, Vec<Vec<Polyline>>),
 }
 
+#[derive(Debug)]
 enum Command {
     /// Start of block
     BlockStart,
@@ -70,7 +75,7 @@ impl Command {
             Command::PenLift => [0xfa, 0x30, 0x00],
             Command::PenDown => [0xfa, 0x40, 0x00],
             Command::Move(x, y) => [
-                (x >> 4) as u8,
+                ((x >> 4) & 0xff) as u8,
                 (((x << 4) | (y >> 8)) & 0xff) as u8,
                 (y & 0xff) as u8,
             ],
@@ -185,10 +190,16 @@ impl<'a> Sketch<'a> {
             }
 
             let start = polyline[0];
-            self.add_command(Command::Move((fix_x(start.x) * 10.0) as u16, (fix_y(start.y) * 10.0) as u16));
+            self.add_command(Command::Move(
+                (fix_x(start.x) * 10.0) as u16,
+                (fix_y(start.y) * 10.0) as u16,
+            ));
             self.add_command(Command::PenDown);
             for point in polyline[1..].iter() {
-                self.add_command(Command::Move((fix_x(point.x) * 10.0) as u16, (fix_y(point.y) * 10.0) as u16));
+                self.add_command(Command::Move(
+                    (fix_x(point.x) * 10.0) as u16,
+                    (fix_y(point.y) * 10.0) as u16,
+                ));
             }
             self.add_command(Command::PenLift);
         }
@@ -435,9 +446,9 @@ mod test {
             0xfa, 0x1f, 0xa1, // Start drawing
             0xfa, 0x30, 0x00, // Pen lift
             0x00, 0x00, 0x00, // Move to 0,0
-            0x07, 0xb1, 0xc8, // Move to 123,456
+            0x07, 0xb3, 0x06, // Move to 123,456
             0xfa, 0x40, 0x00, // Pen down
-            0x08, 0xf1, 0xdc, // Move to 143,476
+            0x08, 0xf2, 0xf2, // Move to 143,476
             0xfa, 0x30, 0x00, // Pen lift
             0x00, 0x00, 0x00, // Move to 0,0
             0xfa, 0x20, 0x00, // Stop drawing

@@ -402,9 +402,9 @@ mod tests {
         let mode = PrintMode::Schedule5;
         let polylines = vec![];
         match mode.to_print_task(polylines.clone()) {
-            PrintTask::Duration(d, p) => {
+            PrintTask::Scheduled(d, p) => {
                 assert_eq!(d, Duration::from_secs(60 * 5));
-                assert_eq!(p, polylines);
+                assert_eq!(p, vec![polylines]);
             },
             t @ _ => panic!("Task was {:?}", t),
         }
