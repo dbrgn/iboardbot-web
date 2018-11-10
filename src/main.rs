@@ -326,13 +326,25 @@ fn main() {
 
     // Parse config
     let configfile = File::open(&args.flag_c).unwrap_or_else(|e| {
-        println!("Could not open configfile ({}): {}", &args.flag_c, e);
+        eprintln!("Error: Could not open configfile ({}): {}", &args.flag_c, e);
         process::exit(1);
     });
     let config: Config = serde_json::from_reader(configfile).unwrap_or_else(|e| {
-        println!("Could not parse configfile ({}): {}", &args.flag_c, e);
+        eprintln!("Error: Could not parse configfile ({}): {}", &args.flag_c, e);
         process::exit(1);
     });
+
+    // Check for presence of relevant paths
+    let device_path = Path::new(&config.device);
+    if !device_path.exists() {
+        eprintln!("Error: Device {} does not exist", &config.device);
+        process::exit(2);
+    }
+    let static_dir_path = Path::new("static");
+    if !static_dir_path.exists() || !static_dir_path.is_dir() {
+        eprintln!("Error: Static files dir does not exist");
+        process::exit(2);
+    }
 
     // Launch robot thread
     let baud_rate = BaudRate::Baud115200;
@@ -355,7 +367,7 @@ fn main() {
     if headless_mode {
         headless_start(robot_queue.clone(), &config)
             .unwrap_or_else(|e| {
-                println!("Could not start headless mode: {:?}", e);
+                eprintln!("Error: Could not start headless mode: {:?}", e);
                 process::exit(2);
             });
     }

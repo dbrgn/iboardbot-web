@@ -15,6 +15,16 @@ This is what it looks like in the browser:
 
 Work in progress.
 
+## Building
+
+Build debug build:
+
+    $ cargo build
+
+Build release build for Raspberry Pi:
+
+    $ cargo build --release --target arm-unknown-linux-gnueabihf
+
 ## Starting
 
 This project currently requires Rust 1.26+. The easiest way to get that is
