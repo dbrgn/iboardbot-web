@@ -296,7 +296,11 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<PrintTask> {
                             }
                         },
                         PrintTask::Scheduled(interval, polylines_vec) => {
-                            println!("Scheduling every {} minutes", interval.as_secs() / 60);
+                            if polylines_vec.is_empty() {
+                                warn!("Could not schedule print task: polylines_vec is empty");
+                                return;
+                            }
+                            info!("Scheduling every {} minutes", interval.as_secs() / 60);
                             let blocks_queue = blocks_queue.clone();
                             let iteration_clone = iteration.clone();
                             current_job = Some(executor.schedule_fixed_rate(
