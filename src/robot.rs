@@ -359,9 +359,11 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<PrintTask> {
                             let mut send_next = false;
 
                             if line == "CL STATUS=READY" {
+                                debug!("< Requesting block");
                                 send_next = true;
                             } else if let Some(captures) = ack_re.captures(line) {
                                 let number_str = captures.get(1).unwrap().as_str();
+                                debug!("< Ack: {}", number_str);
                                 match number_str.parse::<u32>() {
                                     Ok(number) if number == 1 => {
                                         // If the acked number went down, that means that a reset
