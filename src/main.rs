@@ -32,7 +32,7 @@ use actix_web::server::HttpServer;
 use docopt::Docopt;
 use futures::Future;
 use serial::BaudRate;
-use simplelog::{TermLogger, LevelFilter, Config as LogConfig};
+use simplelog::{TermLogger, SimpleLogger, LevelFilter, Config as LogConfig};
 use svg2polylines::Polyline;
 
 use robot::PrintTask;
@@ -316,7 +316,11 @@ fn headless_start(robot_queue: RobotQueue, config: &Config) -> Result<(), Headle
 
 fn main() {
     // Init logger
-    TermLogger::init(LevelFilter::Info, LogConfig::default()).unwrap();
+    if let Err(_) = TermLogger::init(LevelFilter::Info, LogConfig::default()) {
+        eprintln!("Could not initialize TermLogger. Falling back to SimpleLogger.");
+        SimpleLogger::init(LevelFilter::Info, LogConfig::default())
+            .expect("Could not initialize SimpleLogger");
+    }
 
     // Parse args
     let args: Args = Docopt::new(USAGE)
