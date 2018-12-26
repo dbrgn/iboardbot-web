@@ -380,7 +380,7 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<PrintTask> {
                                         // that we probably started the server process after a few
                                         // blocks were already printed. Reset the number.
                                         warn!("Reset current block number");
-                                        current_block = 1;
+                                        current_block = 0;
                                         send_next = true;
                                     },
                                     Ok(number) => {
