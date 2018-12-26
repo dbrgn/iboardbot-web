@@ -13,8 +13,8 @@ use scheduled_executor::executor::TaskHandle;
 use serial::{self, BaudRate, PortSettings, SerialPort};
 use svg2polylines::Polyline;
 
-const IBB_WIDTH: u16 = 358;
-const IBB_HEIGHT: u16 = 123;
+pub(crate) const IBB_WIDTH: u16 = 358;
+pub(crate) const IBB_HEIGHT: u16 = 123;
 const TIMEOUT_MS_SERIAL: u64 = 1000;
 const TIMEOUT_MS_CHANNEL: u64 = 50;
 
