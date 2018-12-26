@@ -17,12 +17,13 @@ use std::convert::From;
 use std::ffi::OsStr;
 use std::fmt;
 use std::fs::{File, DirEntry, read_dir};
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::path::Path;
 use std::process;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::Sender;
 use std::time::Duration;
+use std::thread::sleep;
 
 use actix_web::{AsyncResponder, HttpMessage};
 use actix_web::{App, HttpRequest, HttpResponse, Json, Result as ActixResult, ResponseError};
@@ -58,6 +59,7 @@ struct State {
 
 #[derive(Debug)]
 enum HeadlessError {
+    NoFiles,
     Io(io::Error),
     SvgParse(String),
     Queue(String),
@@ -66,6 +68,17 @@ enum HeadlessError {
 impl From<io::Error> for HeadlessError {
     fn from(e: io::Error) -> Self {
         HeadlessError::Io(e)
+    }
+}
+
+impl fmt::Display for HeadlessError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            HeadlessError::NoFiles => write!(f, "No SVG files found"),
+            HeadlessError::Io(e) => write!(f, "I/O Error: {}", e),
+            HeadlessError::SvgParse(e) => write!(f, "SVG Parse Error: {}", e),
+            HeadlessError::Queue(e) => write!(f, "Queue Error: {}", e),
+        }
     }
 }
 
@@ -226,7 +239,7 @@ fn preview_handler(req: Json<PreviewRequest>) -> JsonResult<Json<Vec<Polyline>>>
 
 /// Scale polylines.
 fn scale_polylines(polylines: &mut Vec<Polyline>, offset: (f64, f64), scale: (f64, f64)) {
-    println!("Scaling polylines with offset {:?} and scale {:?}", offset, scale);
+    info!("Scaling polylines with offset {:?} and scale {:?}", offset, scale);
     for polyline in polylines {
         for coord in polyline {
             coord.x = scale.0 * coord.x + offset.0;
@@ -242,7 +255,7 @@ fn print_handler(req: HttpRequest<State>) -> impl Future<Item=HttpResponse, Erro
         )))
         .and_then(move |print_request: PrintRequest| {
             // Parse SVG into list of polylines
-            println!("Requested print mode: {:?}", print_request.mode);
+            info!("Requested print mode: {:?}", print_request.mode);
             let mut polylines = match svg2polylines::parse(&print_request.svg) {
                 Ok(polylines) => polylines,
                 Err(e) => return Err(JsonError::ClientError(ErrorDetails::from(e))),
@@ -273,6 +286,9 @@ fn print_handler(req: HttpRequest<State>) -> impl Future<Item=HttpResponse, Erro
 fn headless_start(robot_queue: RobotQueue, config: &Config) -> Result<(), HeadlessError> {
     // Get SVG files to be printed
     let svg_files = get_svg_files(&config.svg_dir)?;
+    if svg_files.is_empty() {
+        return Err(HeadlessError::NoFiles);
+    }
 
     // Read SVG files
     let mut svgs = vec![];
@@ -330,24 +346,29 @@ fn main() {
 
     // Parse config
     let configfile = File::open(&args.flag_c).unwrap_or_else(|e| {
-        eprintln!("Error: Could not open configfile ({}): {}", &args.flag_c, e);
-        process::exit(1);
+        error!("Could not open configfile ({}): {}", &args.flag_c, e);
+        abort(1);
     });
     let config: Config = serde_json::from_reader(configfile).unwrap_or_else(|e| {
-        eprintln!("Error: Could not parse configfile ({}): {}", &args.flag_c, e);
-        process::exit(1);
+        error!("Could not parse configfile ({}): {}", &args.flag_c, e);
+        abort(1);
     });
 
     // Check for presence of relevant paths
     let device_path = Path::new(&config.device);
     if !device_path.exists() {
-        eprintln!("Error: Device {} does not exist", &config.device);
-        process::exit(2);
+        error!("Device {} does not exist", &config.device);
+        abort(2);
     }
     let static_dir_path = Path::new("static");
     if !static_dir_path.exists() || !static_dir_path.is_dir() {
-        eprintln!("Error: Static files dir does not exist");
-        process::exit(2);
+        error!("Static files dir does not exist");
+        abort(2);
+    }
+    let svg_dir_path = Path::new(&config.svg_dir);
+    if !svg_dir_path.exists() || !svg_dir_path.is_dir() {
+        error!("SVG dir {} does not exist", &config.svg_dir);
+        abort(2);
     }
 
     // Launch robot thread
@@ -363,22 +384,22 @@ fn main() {
 
     // Print mode
     match headless_mode {
-        true => println!("Starting in headless mode"),
-        false => println!("Starting in normal mode"),
+        true => info!("Starting in headless mode"),
+        false => info!("Starting in normal mode"),
     };
 
     // If we're in headless mode, start the print jobs
     if headless_mode {
         headless_start(robot_queue.clone(), &config)
             .unwrap_or_else(|e| {
-                eprintln!("Error: Could not start headless mode: {:?}", e);
-                process::exit(2);
+                error!("Could not start headless mode: {}", e);
+                abort(3);
             });
     }
 
     // Start web server
     let interface = "127.0.0.1:8080";
-    println!("Listening on {}", interface);
+    info!("Listening on {}", interface);
     HttpServer::new(move || {
         let mut app = App::with_state(state.clone())
             .handler("/static", StaticFiles::new("static").unwrap())
@@ -397,6 +418,16 @@ fn main() {
         .bind(interface)
         .unwrap()
         .run();
+}
+
+fn abort(exit_code: i32) -> ! {
+    io::stdout().flush().expect("Could not flush stdout");
+    io::stderr().flush().expect("Could not flush stderr");
+
+    // No idea why this is required, but otherwise the error log doesn't show up :(
+    sleep(Duration::from_millis(100));
+
+    process::exit(exit_code);
 }
 
 #[cfg(test)]

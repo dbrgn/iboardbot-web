@@ -240,7 +240,7 @@ fn setup_serial<P: SerialPort>(port: &mut P, baud_rate: BaudRate) -> io::Result<
 /// of polylines can be sent.
 pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<PrintTask> {
     // Connect to serial device
-    println!("Connecting to {} with baud rate {}...", device, baud_rate.speed());
+    info!("Connecting to {} with baud rate {}...", device, baud_rate.speed());
     let mut port = serial::open(device)
         .expect(&format!("Could not open serial device {}", device));
     setup_serial(&mut port, baud_rate)
@@ -284,7 +284,7 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<PrintTask> {
                     print!("Received print task: ");
                     match task {
                         PrintTask::Once(polylines) => {
-                            println!("Scheduling once");
+                            info!("Scheduling once");
                             let sketch = Sketch::new(&polylines);
                             match blocks_queue.lock() {
                                 Ok(mut queue) => {
@@ -307,7 +307,7 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<PrintTask> {
                                 Duration::from_secs(2), // Wait 2 seconds before scheduling the first task
                                 interval, // After that, schedule in a fixed interval
                                 move |_handle| {
-                                    println!("Starting scheduled print");
+                                    info!("Starting scheduled print");
 
                                     // Determine which polylines to print
                                     let i = iteration_clone.fetch_add(1, Ordering::SeqCst);
@@ -329,7 +329,7 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<PrintTask> {
                         },
                     }
                     if let Ok(queue) = blocks_queue.lock() {
-                        println!("{} block(s) in queue", queue.len());
+                        info!("{} block(s) in queue", queue.len());
                     } else {
                         warn!("Could not unlock blocks queue mutex");
                     }
@@ -339,7 +339,7 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<PrintTask> {
                     // Simply ignore it :)
                 },
                 Err(RecvTimeoutError::Disconnected) => {
-                    println!("Disconnected from robot");
+                    info!("Disconnected from robot");
                     break;
                 },
             };
@@ -349,7 +349,7 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<PrintTask> {
                 let line = buf.trim();
 
                 // Debug print of all serial input
-                println!("< {}", line);
+                debug!("< {}", line);
 
                 // If there are blocks to be sent and we got a new CL command
                 // from the robot...
@@ -377,21 +377,21 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<PrintTask> {
                                         // Acked number is larger than our current block. That means
                                         // that we probably started the server process after a few
                                         // blocks were already printed. Reset the number.
-                                        println!("Reset current block number");
+                                        warn!("Reset current block number");
                                         current_block = 1;
                                         send_next = true;
                                     },
                                     Ok(number) => {
-                                        println!("Warning: Got ack for non-current block ({} != {})", number, current_block);
+                                        warn!("Warning: Got ack for non-current block ({} != {})", number, current_block);
                                     },
                                     Err(_) => {
-                                        println!("Could not parse ACK number \"{}\"", number_str);
+                                        error!("Could not parse ACK number \"{}\"", number_str);
                                     },
                                 }
                             }
 
                             if send_next {
-                                println!("> Print a block");
+                                info!("> Print a block");
                                 let block = queue.pop_front().expect("Could not pop block from non-empty queue");
                                 current_block += 1;
                                 ser.write_all(&block)
