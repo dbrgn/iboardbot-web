@@ -259,7 +259,7 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<PrintTask> {
         // A queue for blocks that should be printed.
         let blocks_queue: Arc<Mutex<VecDeque<Block>>> = Arc::new(Mutex::new(VecDeque::new()));
 
-        // The current block number.
+        // The current block number (used for ACKs).
         let mut current_block: u32 = 0;
 
         // Initialize the job scheduler
@@ -360,27 +360,22 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<PrintTask> {
 
                             if line == "CL STATUS=READY" {
                                 info!("< Requesting block");
+                                current_block = 0;
                                 send_next = true;
                             } else if let Some(captures) = ack_re.captures(line) {
                                 let number_str = captures.get(1).unwrap().as_str();
                                 info!("< Ack: {}", number_str);
                                 match number_str.parse::<u32>() {
-                                    Ok(number) if number == 1 => {
-                                        // If the acked number went down, that means that a reset
-                                        // happened in between. Simply continue printing.
-                                        send_next = true;
-                                    },
                                     Ok(number) if number == current_block => {
                                         // Acked number is our current block, so we can safely
                                         // send the next one.
                                         send_next = true;
                                     },
-                                    Ok(number) if number > current_block => {
-                                        // Acked number is larger than our current block. That means
-                                        // that we probably started the server process after a few
-                                        // blocks were already printed. Reset the number.
-                                        warn!("Reset current block number");
-                                        current_block = 0;
+                                    Ok(number) if current_block == 0 => {
+                                        // We probably started the server process after
+                                        // a few blocks were already printed. Catch up.
+                                        warn!("Ack too large, update current block number");
+                                        current_block = number;
                                         send_next = true;
                                     },
                                     Ok(number) => {
@@ -393,13 +388,13 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<PrintTask> {
                             }
 
                             if send_next {
-                                info!("> Print a block");
+                                info!("> Print block {}", current_block + 1);
                                 let block = queue.pop_front().expect("Could not pop block from non-empty queue");
-                                current_block += 1;
                                 ser.write_all(&block)
                                     .unwrap_or_else(|e| error!("Could not write data to serial: {}", e));
                                 ser.flush()
                                     .unwrap_or_else(|e| error!("Could not flush serial buffer: {}", e));
+                                current_block += 1;
                             }
                         }
                     },
