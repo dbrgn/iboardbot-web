@@ -41,10 +41,11 @@ function preparePolyline(polyline, scaleFactor) {
 }
 
 function drawPreview(canvas, polylines) {
+    // Create group of all polylines
     const group = [];
     for (let polyline of polylines) {
         const polylineObj = new fabric.Polyline(
-            preparePolyline(polyline, 2),
+            preparePolyline(polyline, PREVIEW_SCALE_FACTOR),
             {
                 stroke: 'black',
                 fill: null,
@@ -55,6 +56,19 @@ function drawPreview(canvas, polylines) {
         group.push(polylineObj);
     }
     const groupObj = new fabric.Group(group);
+
+    // Re-scale group to fit and center it in viewport
+    const height = IBB_HEIGHT * PREVIEW_SCALE_FACTOR;
+    const width = IBB_WIDTH * PREVIEW_SCALE_FACTOR;
+    if ((groupObj.height / groupObj.width) > (height / width)) {
+        groupObj.scaleToHeight(height);
+    } else {
+        groupObj.scaleToWidth(width);
+    }
+    const centerpoint = new fabric.Point(width / 2, height / 2);
+    groupObj.setPositionByOrigin(centerpoint, 'center', 'center');
+
+    // Add to canvas
     canvas.add(groupObj);
 }
 
