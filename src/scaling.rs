@@ -112,10 +112,14 @@ pub fn fit_polylines(polylines: &mut Vec<Polyline>, target_bounds: &Bounds) -> R
         if y_factor.is_normal() { y_factor } else { 1.0 },
     );
 
+    // Calculate offset for horizontal centering
+    let width = current_bounds.x.spread() * scale_factor;
+    let x_offset = (target_bounds.x.spread() - width) / 2.0;
+
     // Translate and scale
     for polyline in polylines {
         for coord in polyline {
-            coord.x = (coord.x - current_bounds.x.min) * scale_factor + target_bounds.x.min;
+            coord.x = (coord.x - current_bounds.x.min) * scale_factor + target_bounds.x.min + x_offset;
             coord.y = (coord.y - current_bounds.y.min) * scale_factor + target_bounds.y.min;
         }
     }
