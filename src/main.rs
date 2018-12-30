@@ -45,6 +45,7 @@ type RobotQueue = Arc<Mutex<Sender<PrintTask>>>;
 /// The raw configuration obtained when parsing the config file.
 #[derive(Debug, Deserialize, Clone)]
 struct RawConfig {
+    listen: Option<String>,
     device: Option<String>,
     svg_dir: Option<String>,
     static_dir: Option<String>,
@@ -55,6 +56,7 @@ struct RawConfig {
 /// so be careful with sensitive data.
 #[derive(Debug, Serialize, Clone)]
 struct Config {
+    listen: String,
     device: String,
     svg_dir: String,
     static_dir: String,
@@ -63,6 +65,10 @@ struct Config {
 
 impl Config {
     fn from(config: &RawConfig) -> Option<Self> {
+        let listen = match config.listen {
+            Some(ref val) => val.clone(),
+            None => "127.0.0.1:8080".to_string(),
+        };
         let device = match config.device {
             Some(ref val) => val.clone(),
             None => {
@@ -88,19 +94,21 @@ impl Config {
                 return None;
             }
         };
-        Some(Self { device, svg_dir, static_dir, interval_seconds })
+        Some(Self { listen, device, svg_dir, static_dir, interval_seconds })
     }
 }
 
 #[derive(Debug, Clone)]
 struct PreviewConfig {
+    listen: String,
     static_dir: String,
 }
 
 impl PreviewConfig {
     fn from(config: &RawConfig) -> Self {
         Self {
-            static_dir: config.static_dir.clone().unwrap_or_else(|| "static".to_string())
+            listen: config.listen.clone().unwrap_or_else(|| "listen".to_string()),
+            static_dir: config.static_dir.clone().unwrap_or_else(|| "static".to_string()),
         }
     }
 }
@@ -473,7 +481,7 @@ fn main_active(config: Config, headless_mode: bool) {
     }
 
     // Start web server
-    let interface = "127.0.0.1:8080";
+    let interface = config.listen.clone();
     info!("Listening on {}", interface);
     HttpServer::new(move || {
         let mut app = App::with_state(state.clone())
@@ -507,7 +515,7 @@ fn main_preview(config: PreviewConfig) {
     }
 
     // Start web server
-    let interface = "127.0.0.1:8080";
+    let interface = config.listen.clone();
     info!("Listening on {}", interface);
     HttpServer::new(move || {
         App::new()

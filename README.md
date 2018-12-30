@@ -39,6 +39,7 @@ The `-c` argument is optional, it defaults to `config.json`.
 The configfile needs to look like this:
 
     {
+        "listen": "127.0.0.1:8080",
         "device": "/dev/ttyACM0",
         "svg_dir": "/path/to/svgdir",
         "static_dir": "/srv/www/static",
@@ -48,10 +49,11 @@ The configfile needs to look like this:
 ...or for preview-only:
 
     {
+        "listen": "127.0.0.1:8080",
         "static_dir": "/srv/www/static"
     }
 
-(Note: The `static_dir` key is optional, if left out it will use "static" relative to the CWD.)
+(Note: The `static_dir` and `listen` keys are optional.)
 
 If you use the original iBoardBot Arduino via USB, then the `device` will
 probably be `/dev/ttyACM0`. The `svg_dir` points to the directory where SVG
