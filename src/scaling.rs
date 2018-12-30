@@ -192,12 +192,12 @@ mod tests {
         fit_polylines(&mut polylines, &target_bounds).unwrap();
         assert_eq!(polylines.len(), 2);
         assert_eq!(polylines[0], vec![
-            CoordinatePair { x: 1.0, y: 1.0 },
-            CoordinatePair { x: 2.0, y: 3.0 },
+            CoordinatePair { x: 2.0, y: 1.0 },
+            CoordinatePair { x: 3.0, y: 3.0 },
         ]);
         assert_eq!(polylines[1], vec![
-            CoordinatePair { x: 1.0, y: 2.0 },
             CoordinatePair { x: 2.0, y: 2.0 },
+            CoordinatePair { x: 3.0, y: 2.0 },
         ]);
     }
 
@@ -213,6 +213,6 @@ mod tests {
             y: Range { min: 1.0, max: 3.0 },
         };
         fit_polylines(&mut polylines, &target_bounds).unwrap();
-        assert_eq!(polylines, vec![vec![CoordinatePair { x: 1.0, y: 1.0 }]]);
+        assert_eq!(polylines, vec![vec![CoordinatePair { x: 2.5, y: 1.0 }]]);
     }
 }
