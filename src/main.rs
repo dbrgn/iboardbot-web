@@ -520,6 +520,7 @@ fn main_preview(config: PreviewConfig) {
     HttpServer::new(move || {
         App::new()
             .handler("/static", StaticFiles::new(&config.static_dir).unwrap())
+            .route("/preview/", Method::POST, preview_handler)
             .route("/", Method::GET, index_handler_preview)
     })
         .bind(interface)
