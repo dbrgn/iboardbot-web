@@ -37,6 +37,7 @@ pub enum PrintTask {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 enum Command {
     /// Start of block
     BlockStart,
@@ -121,7 +122,7 @@ impl<'a> Sketch<'a> {
         Sketch {
             buf: vec![],
             block_size: 768,
-            polylines: polylines,
+            polylines,
         }
     }
 
@@ -224,7 +225,7 @@ impl<'a> Sketch<'a> {
 /// Configure the serial port
 fn setup_serial<P: SerialPort>(port: &mut P, baud_rate: BaudRate) -> io::Result<()> {
     port.configure(&PortSettings {
-        baud_rate: baud_rate,
+        baud_rate,
         char_size: serial::Bits8,
         parity: serial::ParityNone,
         stop_bits: serial::Stop1,

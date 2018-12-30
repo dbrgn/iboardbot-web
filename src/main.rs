@@ -148,7 +148,7 @@ impl fmt::Display for HeadlessError {
     }
 }
 
-const USAGE: &'static str = "
+const USAGE: &str = "
 iBoardBot Web: Cloudless drawing fun.
 
 Usage:
