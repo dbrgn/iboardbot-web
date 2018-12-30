@@ -1,6 +1,6 @@
 const IBB_WIDTH = 358;
 const IBB_HEIGHT = 123;
-const PREVIEW_SCALE_FACTOR = 2; // Preview is scaled with a factor of 2
+const PREVIEW_SCALE_FACTOR = 3; // Preview is scaled with a factor of 3
 
 /**
  * Load an SVG file.
@@ -58,15 +58,16 @@ function drawPreview(canvas, polylines) {
     const groupObj = new fabric.Group(group);
 
     // Re-scale group to fit and center it in viewport
+    const offset = 5 * PREVIEW_SCALE_FACTOR;
     const height = IBB_HEIGHT * PREVIEW_SCALE_FACTOR;
     const width = IBB_WIDTH * PREVIEW_SCALE_FACTOR;
     if ((groupObj.height / groupObj.width) > (height / width)) {
-        groupObj.scaleToHeight(height);
+        groupObj.scaleToHeight(height - offset * 2);
     } else {
-        groupObj.scaleToWidth(width);
+        groupObj.scaleToWidth(width - offset * 2);
     }
-    const centerpoint = new fabric.Point(width / 2, height / 2);
-    groupObj.setPositionByOrigin(centerpoint, 'center', 'center');
+    const centerpoint = new fabric.Point(width / 2, offset);
+    groupObj.setPositionByOrigin(centerpoint, 'center', 'top');
 
     // Add to canvas
     canvas.add(groupObj);

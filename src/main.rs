@@ -19,7 +19,7 @@ use std::ffi::OsStr;
 use std::fmt;
 use std::fs::{File, DirEntry, read_dir};
 use std::io::{self, Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::Sender;
@@ -42,13 +42,67 @@ use scaling::{Bounds, Range};
 
 type RobotQueue = Arc<Mutex<Sender<PrintTask>>>;
 
+/// The raw configuration obtained when parsing the config file.
+#[derive(Debug, Deserialize, Clone)]
+struct RawConfig {
+    device: Option<String>,
+    svg_dir: Option<String>,
+    static_dir: Option<String>,
+    interval_seconds: Option<u64>,
+}
+
 /// Note: This struct can be queried over HTTP,
 /// so be careful with sensitive data.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Clone)]
 struct Config {
     device: String,
     svg_dir: String,
+    static_dir: String,
     interval_seconds: u64,
+}
+
+impl Config {
+    fn from(config: &RawConfig) -> Option<Self> {
+        let device = match config.device {
+            Some(ref val) => val.clone(),
+            None => {
+                info!("Note: Config is missing device key");
+                return None;
+            }
+        };
+        let svg_dir = match config.svg_dir {
+            Some(ref val) => val.clone(),
+            None => {
+                info!("Note: Config is missing svg_dir key");
+                return None;
+            }
+        };
+        let static_dir = match config.static_dir {
+            Some(ref val) => val.clone(),
+            None => "static".to_string(),
+        };
+        let interval_seconds = match config.interval_seconds {
+            Some(val) => val,
+            None => {
+                info!("Note: Config is missing interval_seconds key");
+                return None;
+            }
+        };
+        Some(Self { device, svg_dir, static_dir, interval_seconds })
+    }
+}
+
+#[derive(Debug, Clone)]
+struct PreviewConfig {
+    static_dir: String,
+}
+
+impl PreviewConfig {
+    fn from(config: &RawConfig) -> Self {
+        Self {
+            static_dir: config.static_dir.clone().unwrap_or_else(|| "static".to_string())
+        }
+    }
 }
 
 /// Application state.
@@ -108,8 +162,12 @@ struct Args {
     flag_headless: bool,
 }
 
-fn index_handler(_req: HttpRequest<State>) -> ActixResult<NamedFile> {
+fn index_handler_active(_req: HttpRequest<State>) -> ActixResult<NamedFile> {
     Ok(NamedFile::open("static/index.html")?)
+}
+
+fn index_handler_preview(_req: HttpRequest) -> ActixResult<NamedFile> {
+    Ok(NamedFile::open("static/index-preview.html")?)
 }
 
 fn headless_handler(_req: HttpRequest<State>) -> ActixResult<NamedFile> {
@@ -355,10 +413,21 @@ fn main() {
         error!("Could not open configfile ({}): {}", &args.flag_c, e);
         abort(1);
     });
-    let config: Config = serde_json::from_reader(configfile).unwrap_or_else(|e| {
+    let config: RawConfig = serde_json::from_reader(configfile).unwrap_or_else(|e| {
         error!("Could not parse configfile ({}): {}", &args.flag_c, e);
         abort(1);
     });
+
+    // Check if this is an active config
+    match Config::from(&config) {
+        Some(c) => main_active(c, headless_mode),
+        None => main_preview(PreviewConfig::from(&config)),
+    }
+}
+
+/// Start the web server in active (printing) mode.
+fn main_active(config: Config, headless_mode: bool) {
+    info!("Starting server in active mode (with robot attached)");
 
     // Check for presence of relevant paths
     let device_path = Path::new(&config.device);
@@ -366,7 +435,7 @@ fn main() {
         error!("Device {} does not exist", &config.device);
         abort(2);
     }
-    let static_dir_path = Path::new("static");
+    let static_dir_path = Path::new(&config.static_dir);
     if !static_dir_path.exists() || !static_dir_path.is_dir() {
         error!("Static files dir does not exist");
         abort(2);
@@ -417,9 +486,33 @@ fn main() {
             app = app.route("/", Method::GET, headless_handler);
         } else{
             app = app.route("/headless/", Method::GET, headless_handler); // For development
-            app = app.route("/", Method::GET, index_handler);
+            app = app.route("/", Method::GET, index_handler_active);
         };
         app
+    })
+        .bind(interface)
+        .unwrap()
+        .run();
+}
+
+/// Start the web server in preview-only mode.
+fn main_preview(config: PreviewConfig) {
+    info!("Starting server in preview-only mode");
+
+    // Check for presence of relevant paths
+    let static_dir_path = PathBuf::from(&config.static_dir);
+    if !static_dir_path.exists() || !static_dir_path.is_dir() {
+        error!("Static files dir does not exist");
+        abort(2);
+    }
+
+    // Start web server
+    let interface = "127.0.0.1:8080";
+    info!("Listening on {}", interface);
+    HttpServer::new(move || {
+        App::new()
+            .handler("/static", StaticFiles::new(&config.static_dir).unwrap())
+            .route("/", Method::GET, index_handler_preview)
     })
         .bind(interface)
         .unwrap()

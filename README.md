@@ -41,8 +41,17 @@ The configfile needs to look like this:
     {
         "device": "/dev/ttyACM0",
         "svg_dir": "/path/to/svgdir",
+        "static_dir": "/srv/www/static",
         "interval_seconds": 900
     }
+
+...or for preview-only:
+
+    {
+        "static_dir": "/srv/www/static"
+    }
+
+(Note: The `static_dir` key is optional, if left out it will use "static" relative to the CWD.)
 
 If you use the original iBoardBot Arduino via USB, then the `device` will
 probably be `/dev/ttyACM0`. The `svg_dir` points to the directory where SVG
