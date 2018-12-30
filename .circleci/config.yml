@@ -46,6 +46,25 @@ jobs:
           key: v1-cargo-audit-cache
           paths:
             - /usr/local/cargo
+  build-image:
+    docker:
+      - image: docker:stable
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Build Docker image
+          command: |
+            docker build \
+              --no-cache \
+              -t dbrgn/iboardbot-web:latest \
+              -t dbrgn/iboardbot-web:${CIRCLE_BRANCH} \
+              .
+      - deploy:
+          name: Push Docker image
+          command: |
+            docker login -u $DOCKER_USER -p $DOCKER_PASS && \
+            docker push dbrgn/iboardbot-web
 
 workflows:
   version: 2
@@ -55,6 +74,13 @@ workflows:
     jobs:
       - test
       - audit
+      - build-image:
+          requires:
+            - test
+          filters:
+            branches:
+              only:
+                - master
 
   # Build master every week on Monday at 04:00 am
   weekly:
@@ -68,3 +94,6 @@ workflows:
     jobs:
       - test
       - audit
+      - build-image:
+          requires:
+            - test
