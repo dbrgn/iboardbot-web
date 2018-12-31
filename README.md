@@ -1,5 +1,7 @@
 # iBoardBot Web
 
+[![CircleCI][circle-ci-badge]][circle-ci]
+
 An unofficial iBoardBot client that does not require you to use an
 unauthenticated, unencrypted cloud solution :)
 
@@ -76,3 +78,7 @@ Licensed under either of
    http://www.apache.org/licenses/LICENSE-2.0)
  * MIT license ([LICENSE-MIT](LICENSE-MIT) or
    http://opensource.org/licenses/MIT) at your option.
+
+
+[circle-ci]: https://circleci.com/gh/dbrgn/iboardbot-web/tree/master
+[circle-ci-badge]: https://circleci.com/gh/dbrgn/iboardbot-web/tree/master.svg?style=shield
