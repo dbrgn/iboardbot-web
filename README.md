@@ -15,7 +15,16 @@ This is what it looks like in the browser:
 
 ![screenshot](screenshot-small.png)
 
-Work in progress.
+## Modes
+
+The program has two modes: Regular mode or headless mode.
+
+In regular mode, you can preview and print directly through the web
+interface.
+
+In headless mode, the printer will load SVGs from a directory and print them
+one by one in a specified interval. This is good for unattended
+installations.
 
 ## Building
 
@@ -29,7 +38,7 @@ Build release build for Raspberry Pi:
 
 ## Starting
 
-This project currently requires Rust 1.26+. The easiest way to get that is
+This project currently requires Rust 1.31+. The easiest way to get that is
 through [rustup](https://rustup.rs/).
 
 To start the server:
