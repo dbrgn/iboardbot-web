@@ -42,6 +42,13 @@ use scaling::{Bounds, Range};
 
 type RobotQueue = Arc<Mutex<Sender<PrintTask>>>;
 
+/// Used for limiting the running time.
+#[derive(Debug, Serialize, Deserialize, Copy, Clone)]
+pub(crate) struct TimeLimits {
+    start_time: (u8, u8),
+    end_time: (u8, u8),
+}
+
 /// The raw configuration obtained when parsing the config file.
 #[derive(Debug, Deserialize, Clone)]
 struct RawConfig {
@@ -50,6 +57,7 @@ struct RawConfig {
     svg_dir: Option<String>,
     static_dir: Option<String>,
     interval_seconds: Option<u64>,
+    time_limits: Option<TimeLimits>,
 }
 
 /// Note: This struct can be queried over HTTP,
@@ -61,6 +69,7 @@ struct Config {
     svg_dir: String,
     static_dir: String,
     interval_seconds: u64,
+    time_limits: Option<TimeLimits>,
 }
 
 impl Config {
@@ -94,7 +103,8 @@ impl Config {
                 return None;
             }
         };
-        Some(Self { listen, device, svg_dir, static_dir, interval_seconds })
+        let time_limits = config.time_limits;
+        Some(Self { listen, device, svg_dir, static_dir, interval_seconds, time_limits })
     }
 }
 
@@ -456,7 +466,7 @@ fn main_active(config: Config, headless_mode: bool) {
 
     // Launch robot thread
     let baud_rate = BaudRate::Baud115200;
-    let tx = robot::communicate(&config.device, baud_rate);
+    let tx = robot::communicate(&config.device, baud_rate, config.time_limits);
 
     // Initialize server state
     let robot_queue = Arc::new(Mutex::new(tx));

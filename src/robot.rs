@@ -13,6 +13,8 @@ use scheduled_executor::executor::TaskHandle;
 use serial::{self, BaudRate, PortSettings, SerialPort};
 use svg2polylines::Polyline;
 
+use crate::TimeLimits;
+
 pub(crate) const IBB_WIDTH: u16 = 358;
 pub(crate) const IBB_HEIGHT: u16 = 123;
 const TIMEOUT_MS_SERIAL: u64 = 1000;
@@ -239,7 +241,11 @@ fn setup_serial<P: SerialPort>(port: &mut P, baud_rate: BaudRate) -> io::Result<
 ///
 /// The return value is the sending end of a channel. Over this channel, a list
 /// of polylines can be sent.
-pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<PrintTask> {
+pub(crate) fn communicate(
+    device: &str,
+    baud_rate: BaudRate,
+    time_limits: Option<TimeLimits>,
+) -> Sender<PrintTask> {
     // Connect to serial device
     info!("Connecting to {} with baud rate {}...", device, baud_rate.speed());
     let mut port = serial::open(device)
@@ -250,6 +256,14 @@ pub fn communicate(device: &str, baud_rate: BaudRate) -> Sender<PrintTask> {
     // Wrap port into a buffered stream
     let mut ser = BufStream::new(port);
     let mut buf = String::new();
+
+    if let Some(limits) = time_limits {
+        info!("Limiting time from {:02}:{:02} to {:02}:{:02}",
+              limits.start_time.0, limits.start_time.1,
+              limits.end_time.0, limits.end_time.1);
+    } else {
+        info!("No time limits configured");
+    };
 
     // Regex for recognizing ACK messages
     let ack_re = Regex::new(r"^CL STATUS=ACK&NUM=(\d+)$").expect("Could not compile regex");
