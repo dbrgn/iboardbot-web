@@ -291,16 +291,16 @@ pub(crate) fn communicate(
                 Ok(task) => {
                     if let Some(ref handle) = current_job {
                         // Handle existing job
-                        print!("Cancelling old print job");
+                        info!("Cancelling old print job");
                         handle.stop();
                     }
                     // Reset iteration count
                     iteration.store(0, Ordering::SeqCst);
 
-                    print!("Received print task: ");
+                    info!("Received print task");
                     match task {
                         PrintTask::Once(polylines) => {
-                            info!("Scheduling once");
+                            info!("-> Task: Scheduling once");
                             let sketch = Sketch::new(&polylines);
                             match blocks_queue.lock() {
                                 Ok(mut queue) => {
@@ -316,7 +316,12 @@ pub(crate) fn communicate(
                                 warn!("Could not schedule print task: polylines_vec is empty");
                                 return;
                             }
-                            info!("Scheduling every {} minutes", interval.as_secs() / 60);
+                            info!("-> Task: Scheduling every {} minutes", interval.as_secs() / 60);
+                            if let Some(limits) = time_limits {
+                                info!("-> Task: Time limits: {}", limits);
+                            } else {
+                                info!("-> Task: No time limits");
+                            };
                             let blocks_queue = blocks_queue.clone();
                             let iteration_clone = iteration.clone();
                             current_job = Some(executor.schedule_fixed_rate(
@@ -326,12 +331,12 @@ pub(crate) fn communicate(
                                     // Check the time limits
                                     if let Some(limits) = time_limits {
                                         if !limits.is_within_limits(&time::now()) {
-                                            info!("Skipping print (outside of time limits)");
+                                            info!("Scheduler: Skipping print (outside of time limits)");
                                             return;
                                         }
                                     }
 
-                                    info!("Starting scheduled print");
+                                    info!("Scheduler: Starting scheduled print");
 
                                     // Determine which polylines to print
                                     let i = iteration_clone.fetch_add(1, Ordering::SeqCst);

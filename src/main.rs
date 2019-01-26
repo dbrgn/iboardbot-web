@@ -67,6 +67,14 @@ impl TimeLimits {
     }
 }
 
+impl fmt::Display for TimeLimits {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:02}:{:02}–{:02}:{:02}",
+               self.start_time.0, self.start_time.1,
+               self.end_time.0, self.end_time.1)
+    }
+}
+
 /// The raw configuration obtained when parsing the config file.
 #[derive(Debug, Deserialize, Clone)]
 struct RawConfig {
