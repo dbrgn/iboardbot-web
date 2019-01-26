@@ -190,12 +190,14 @@ Options:
     -h --help        Show this screen.
     -c <configfile>  Path to config file [default: config.json].
     --headless       Headless mode (start drawing immediately)
+    --debug          Log debug logs
 ";
 
 #[derive(Debug, Deserialize)]
 struct Args {
     flag_c: String,
     flag_headless: bool,
+    flag_debug: bool,
 }
 
 fn index_handler_active(_req: HttpRequest<State>) -> ActixResult<NamedFile> {
@@ -431,17 +433,20 @@ fn headless_start(robot_queue: RobotQueue, config: &Config) -> Result<(), Headle
 }
 
 fn main() {
-    // Init logger
-    if let Err(_) = TermLogger::init(LevelFilter::Info, LogConfig::default()) {
-        eprintln!("Could not initialize TermLogger. Falling back to SimpleLogger.");
-        SimpleLogger::init(LevelFilter::Debug, LogConfig::default())
-            .expect("Could not initialize SimpleLogger");
-    }
-
     // Parse args
     let args: Args = Docopt::new(USAGE)
                             .and_then(|d| d.deserialize())
                             .unwrap_or_else(|e| e.exit());
+
+    // Init logger
+    let log_level = if args.flag_debug { LevelFilter::Debug } else { LevelFilter::Info };
+    if let Err(_) = TermLogger::init(log_level, LogConfig::default()) {
+        eprintln!("Could not initialize TermLogger. Falling back to SimpleLogger.");
+        SimpleLogger::init(log_level, LogConfig::default())
+            .expect("Could not initialize SimpleLogger");
+    }
+
+    // Headless mode
     let headless_mode: bool = args.flag_headless;
 
     // Parse config
