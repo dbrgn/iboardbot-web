@@ -19,3 +19,4 @@ serde_json = "1.0"
 serial = "0.3"
 simplelog = "0.5"
 svg2polylines = { version = "0.5", features = ["serde"] }
+time = "0.1"

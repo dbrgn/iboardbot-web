@@ -10,6 +10,7 @@ extern crate serde_json;
 extern crate serial;
 extern crate simplelog;
 extern crate svg2polylines;
+extern crate time;
 
 mod robot;
 mod scaling;
@@ -36,6 +37,7 @@ use futures::Future;
 use serial::BaudRate;
 use simplelog::{TermLogger, SimpleLogger, LevelFilter, Config as LogConfig};
 use svg2polylines::Polyline;
+use time::Tm;
 
 use robot::PrintTask;
 use scaling::{Bounds, Range};
@@ -43,10 +45,26 @@ use scaling::{Bounds, Range};
 type RobotQueue = Arc<Mutex<Sender<PrintTask>>>;
 
 /// Used for limiting the running time.
+///
+/// Note: Limiting the time only works for scheduled tasks!
 #[derive(Debug, Serialize, Deserialize, Copy, Clone)]
 pub(crate) struct TimeLimits {
     start_time: (u8, u8),
     end_time: (u8, u8),
+}
+
+impl TimeLimits {
+    pub(crate) fn is_within_limits(&self, time: &Tm) -> bool {
+        let Tm { tm_hour: hour, tm_min: min, .. } = time;
+        let start: i32 = self.start_time.0 as i32 * 60 + self.start_time.1 as i32;
+        let now: i32 = hour * 60 + min;
+        let end: i32 = self.end_time.0 as i32 * 60 + self.end_time.1 as i32;
+        if start < end {
+            now >= start && now <= end
+        } else {
+            now >= start || now <= end
+        }
+    }
 }
 
 /// The raw configuration obtained when parsing the config file.
@@ -573,5 +591,73 @@ mod tests {
             },
             t @ _ => panic!("Task was {:?}", t),
         }
+    }
+
+    #[test]
+    fn time_limits_simple() {
+        let limits = TimeLimits {
+            start_time: (8, 0),
+            end_time: (12, 30),
+        };
+
+        let mut tm_before = time::empty_tm();
+        tm_before.tm_hour = 7;
+        tm_before.tm_min = 59;
+        let mut tm_on = time::empty_tm();
+        tm_on.tm_hour = 8;
+        tm_on.tm_min = 0;
+        let mut tm_within1 = time::empty_tm();
+        tm_within1.tm_hour = 9;
+        tm_within1.tm_min = 30;
+        let mut tm_within2 = time::empty_tm();
+        tm_within2.tm_hour = 12;
+        tm_within2.tm_min = 28;
+        let mut tm_after = time::empty_tm();
+        tm_after.tm_hour = 12;
+        tm_after.tm_min = 32;
+
+        assert_eq!(limits.is_within_limits(&tm_before), false);
+        assert_eq!(limits.is_within_limits(&tm_on), true);
+        assert_eq!(limits.is_within_limits(&tm_within1), true);
+        assert_eq!(limits.is_within_limits(&tm_within2), true);
+        assert_eq!(limits.is_within_limits(&tm_after), false);
+    }
+
+    #[test]
+    fn time_limits_complex() {
+        let limits = TimeLimits {
+            start_time: (22, 0),
+            end_time: (2, 30),
+        };
+
+        let mut tm_before = time::empty_tm();
+        tm_before.tm_hour = 21;
+        tm_before.tm_min = 0;
+        let mut tm_on1 = time::empty_tm();
+        tm_on1.tm_hour = 22;
+        tm_on1.tm_min = 0;
+        let mut tm_on2 = time::empty_tm();
+        tm_on2.tm_hour = 2;
+        tm_on2.tm_min = 30;
+        let mut tm_within1 = time::empty_tm();
+        tm_within1.tm_hour = 23;
+        tm_within1.tm_min = 30;
+        let mut tm_within2 = time::empty_tm();
+        tm_within2.tm_hour = 0;
+        tm_within2.tm_min = 0;
+        let mut tm_within3 = time::empty_tm();
+        tm_within3.tm_hour = 1;
+        tm_within3.tm_min = 59;
+        let mut tm_after = time::empty_tm();
+        tm_after.tm_hour = 3;
+        tm_after.tm_min = 0;
+
+        assert_eq!(limits.is_within_limits(&tm_before), false);
+        assert_eq!(limits.is_within_limits(&tm_on1), true);
+        assert_eq!(limits.is_within_limits(&tm_on2), true);
+        assert_eq!(limits.is_within_limits(&tm_within1), true);
+        assert_eq!(limits.is_within_limits(&tm_within2), true);
+        assert_eq!(limits.is_within_limits(&tm_within3), true);
+        assert_eq!(limits.is_within_limits(&tm_after), false);
     }
 }

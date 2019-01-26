@@ -12,8 +12,9 @@ use scheduled_executor::CoreExecutor;
 use scheduled_executor::executor::TaskHandle;
 use serial::{self, BaudRate, PortSettings, SerialPort};
 use svg2polylines::Polyline;
+use time;
 
-use crate::TimeLimits;
+use ::TimeLimits;
 
 pub(crate) const IBB_WIDTH: u16 = 358;
 pub(crate) const IBB_HEIGHT: u16 = 123;
@@ -322,6 +323,14 @@ pub(crate) fn communicate(
                                 Duration::from_secs(2), // Wait 2 seconds before scheduling the first task
                                 interval, // After that, schedule in a fixed interval
                                 move |_handle| {
+                                    // Check the time limits
+                                    if let Some(limits) = time_limits {
+                                        if !limits.is_within_limits(&time::now()) {
+                                            info!("Skipping print (outside of time limits)");
+                                            return;
+                                        }
+                                    }
+
                                     info!("Starting scheduled print");
 
                                     // Determine which polylines to print
