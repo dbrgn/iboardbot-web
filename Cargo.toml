@@ -8,7 +8,7 @@ repository = "https://github.com/dbrgn/iboardbot-web"
 [dependencies]
 actix-web = "0.7"
 bufstream = "0.1"
-docopt = "0.8"
+docopt = "1"
 futures = "0.1"
 log = "0.3"
 regex = "0.2"
