@@ -184,11 +184,13 @@ impl fmt::Display for HeadlessError {
     }
 }
 
+const NAME: &str = "iboardbot-web";
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 const USAGE: &str = "
 iBoardBot Web: Cloudless drawing fun.
 
 Usage:
-    iboardbot-web [-c <configfile>] [--headless]
+    iboardbot-web [-h] [-v] [-c <configfile>] [--headless] [--debug]
 
 Example:
 
@@ -196,6 +198,7 @@ Example:
 
 Options:
     -h --help        Show this screen.
+    -v --version     Show version.
     -c <configfile>  Path to config file [default: config.json].
     --headless       Headless mode (start drawing immediately)
     --debug          Log debug logs
@@ -206,6 +209,7 @@ struct Args {
     flag_c: String,
     flag_headless: bool,
     flag_debug: bool,
+    flag_version: bool,
 }
 
 fn index_handler_active(_req: HttpRequest<State>) -> ActixResult<NamedFile> {
@@ -445,6 +449,12 @@ fn main() {
     let args: Args = Docopt::new(USAGE)
                             .and_then(|d| d.deserialize())
                             .unwrap_or_else(|e| e.exit());
+
+    // Show version and exit
+    if args.flag_version {
+        println!("{} v{}", NAME, VERSION);
+        process::exit(0);
+    }
 
     // Init logger
     let log_level = if args.flag_debug { LevelFilter::Debug } else { LevelFilter::Info };
