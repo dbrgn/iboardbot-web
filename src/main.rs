@@ -35,7 +35,7 @@ use actix_web::server::HttpServer;
 use docopt::Docopt;
 use futures::Future;
 use serial::BaudRate;
-use simplelog::{TermLogger, SimpleLogger, LevelFilter, Config as LogConfig};
+use simplelog::{TermLogger, SimpleLogger, LevelFilter, Config as LogConfig, TerminalMode};
 use svg2polylines::Polyline;
 use time::Tm;
 
@@ -458,7 +458,7 @@ fn main() {
 
     // Init logger
     let log_level = if args.flag_debug { LevelFilter::Debug } else { LevelFilter::Info };
-    if let Err(_) = TermLogger::init(log_level, LogConfig::default()) {
+    if let Err(_) = TermLogger::init(log_level, LogConfig::default(), TerminalMode::Mixed) {
         eprintln!("Could not initialize TermLogger. Falling back to SimpleLogger.");
         SimpleLogger::init(log_level, LogConfig::default())
             .expect("Could not initialize SimpleLogger");
