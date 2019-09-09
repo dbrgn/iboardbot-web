@@ -38,7 +38,7 @@ Build release build for Raspberry Pi:
 
 ## Starting
 
-This project currently requires Rust 1.31+. The easiest way to get that is
+This project requires a recent version of Rust. The easiest way to get that is
 through [rustup](https://rustup.rs/).
 
 To start the server:
