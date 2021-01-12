@@ -81,19 +81,3 @@ workflows:
             branches:
               only:
                 - master
-
-  # Build master every week on Monday at 04:00 am
-  weekly:
-    triggers:
-      - schedule:
-          cron: "0 4 * * 1"
-          filters:
-            branches:
-              only:
-                - master
-    jobs:
-      - test
-      - audit
-      - build-image:
-          requires:
-            - test
